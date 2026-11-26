@@ -26,6 +26,10 @@
           feeBps: pool.feeBps,
           graduationTargetUsd: curve.DEFAULT_GRADUATION_MC_USD
         });
+        // Upgrade legacy local AMM pools already beyond the graduation target.
+        if (curve.marketCap(markets[id]) + 1e-10 >= markets[id].graduationTargetUsd) {
+          curve.graduate(markets[id]);
+        }
       }
       if (markets[id].status === 'GRADUATED' && markets[id].ammPool) {
         pools[id] = normalizePool(markets[id].ammPool);
