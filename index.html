@@ -729,7 +729,7 @@ $$('[data-ago]').forEach(e=>e.textContent=ago(+e.dataset.ago));
 const pc=$('#pchart');if(pc&&/profile/.test(location.hash+(location.hash?'':'x'))){const s=series(UI.pRange);pc.innerHTML=chartSvg(s.a,s.delta>=0);const r=$('[data-d24r]');if(r){r.className='d24 '+(s.delta>=0?'up':'dn');r.innerHTML=`${sgn(s.delta)} <span class="mut">${UI.pRange}</span>`}}
 }
 let tickN=0;
-function tick(){tickN++;for(const t of ALL){if(t.dead)continue;const d=(Math.random()-.5)*2*t.vola;if(t.kind==='token'){const pool=marketPool(t),scale=Math.max(1e-9,1+d);pool.quote*=scale;pool.token/=scale;syncMarket(t,pool)}else{t.p=Math.max(t.p*(1+d),1e-12);t.chg=(t.p/t.base-1)*100;t.h.push(t.p);if(t.h.length>90)t.h.shift()}}
+function tick(){tickN++;for(const t of ALL){if(t.dead)continue;const d=(Math.random()-.5)*2*t.vola;if(t.kind==='token'){const pool=marketPool(t),scale=Math.max(1e-9,1+d),factor=Math.sqrt(scale);pool.quote*=factor;pool.token/=factor;syncMarket(t,pool)}else{t.p=Math.max(t.p*(1+d),1e-12);t.chg=(t.p/t.base-1)*100;t.h.push(t.p);if(t.h.length>90)t.h.shift()}}
 S.pos.filter(p=>p.open&&p.kind==='perp'&&val(p)<=0.0001).forEach(p=>{closePos(p.uid,'Liquidated');toast(`${DB[p.id].sym} ${p.lev}x position liquidated`,1);render(true)});
 if(!document.hidden){updateDom();if(tickN%4===0){rail();checkLb()}}}
 function feedTick(){const it=genFeed();FEED.unshift(it);if(FEED.length>80)FEED.pop();
