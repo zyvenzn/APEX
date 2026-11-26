@@ -182,6 +182,31 @@ const KEY = 'apex-demo-v1';
     await page.click('[data-act="abTf"][data-v="1D"]'); const a = await txt(); await wait(5000); assert.notStrictEqual(await txt(), a);
     await go('token/peldier'); await act('tTab', { v: 'about' }); assert.ok(/^0 buys0 sells/.test(await txt()));
   });
+  await test('NPC archetypes behave according to their type', async () => {
+    const r = await ev(() => {
+      const { AR, ARCH, step } = __apex.npc, cnt = {}, by = {};
+      Object.values(AR).forEach(a => cnt[a] = (cnt[a] || 0) + 1);
+      for (let i = 0; i < 2500; i++) for (const it of step()) (by[AR[it.tr]] = by[AR[it.tr]] || []).push(it);
+      return { kinds: Object.keys(ARCH), cnt, by };
+    });
+    for (const k of r.kinds) assert.ok((r.cnt[k] || 0) >= 3, 'too few ' + k);
+    const get = (a, f) => (r.by[a] || []).filter(f);
+    const snipe = get('sniper', x => x.type === 'Buy'); assert.ok(snipe.length && snipe.every(x => x.at <= 50000), 'sniper buys above low MC');
+    const snipeSell = get('sniper', x => x.type === 'Sell' || x.type === 'Reduced'); assert.ok(snipeSell.every(x => x.at >= 70000), 'sniper sold below 70K MC');
+    const wh = get('whale', () => true); assert.ok(wh.length && wh.every(x => x.amt >= 15000), 'whale trade too small');
+    const sm = get('small', x => x.type === 'Buy'); assert.ok(sm.length && sm.every(x => x.amt <= 60), 'small trader too big');
+    assert.ok(get('degen', x => x.lev).every(x => x.lev >= 10), 'degen leverage too low');
+    assert.ok(get('pro', x => x.lev).every(x => x.lev <= 10), 'pro leverage too high');
+    assert.ok(get('dev', x => x.note).length > 0, 'dev has no tagged trades');
+    assert.ok(Object.values(r.by).flat().every(x => x.amt >= 0 && Number.isFinite(x.amt)), 'invalid trade amount');
+  });
+  await test('NPC trades move price and appear in token transactions', async () => {
+    const r = await ev(() => { const t = __apex.DB.BILLI, p0 = t.p; for (let i = 0; i < 60; i++) __apex.npc.step(); return Object.values(__apex.DB).some(x => x.kind === 'token' && !x.dead && x.p !== x.p0); });
+    assert.ok(r);
+  });
+  await test('trader profile shows archetype badge', async () => {
+    await go('trader/kv4rl'); assert.ok((await page.textContent('#main')).includes('Whale'));
+  });
   await test('delete account resets prices and state', async () => {
     await deposit('10'); await ev(() => { __apex.DB.SOL.p *= 3; }); await wait(1700);
     await act('doDelete'); await wait(600);
