@@ -194,7 +194,7 @@ const RMUL={'24h':1,'7d':3.1,'30d':8.4,'All':26};
 const MULT={'24h':1,'7d':1.8,'30d':2.6,'All':3.4};
 const myPnl=R=>d24()*MULT[R];
 function lbRows(R){const rows=LBT.map(([n,p])=>[n,p*RMUL[R],0]);const mine=myPnl(R);if(mine>Math.min(...rows.map(r=>r[1])))rows.push([S.user.username,mine,1]);rows.sort((a,b)=>b[1]-a[1]);return rows.slice(0,LBT.length)}
-const traderPnl=(n,R)=>{const e=LBT.find(x=>x[0]===n);return (e?e[1]:Math.min((TR[n]?.pnl)||0,Math.min(...LBT.map(x=>x[1]))*.9))*RMUL[R]};
+const traderPnl=(n,R)=>{if(TN.includes(n)){const realized=(NCLOSED[n]||[]).reduce((a,x)=>a+x.pnl,0),unrealized=(Object.entries(NH[n]||{})).reduce((a,[id,h])=>a+(DB[id]?h.qty*DB[id].p-h.cost:0),0);return realized+unrealized}const e=LBT.find(x=>x[0]===n);return (e?e[1]:Math.min((TR[n]?.pnl)||0,Math.min(...LBT.map(x=>x[1]))*.9))*RMUL[R]};
 function myRank(R){const r=lbRows(R).findIndex(x=>x[2]);return {pnl:myPnl(R),rank:r<0?null:r+1,gap:Math.min(...LBT.map(x=>x[1]*RMUL[R]))-myPnl(R)}}
 function lbPos(R){const rows=LBP[R].map(r=>[...r,0]);const best=openPos().map(p=>({p,pnl:val(p)-cost(p)})).sort((a,b)=>b.pnl-a.pnl)[0];if(best&&best.pnl>Math.min(...rows.map(r=>r[3]))){const t=DB[best.p.id];const e=best.p.kind==='perp'?fmtP(best.p.entry).slice(1):abbr(t.mc*cost(best.p)/Math.max(val(best.p),1e-9));rows.push([S.user.username,best.p.id,best.p.kind==='perp'?best.p.side:'',best.pnl,e,cost(best.p),1]);rows.sort((a,b)=>b[3]-a[3])}return rows.slice(0,7)}
 function checkLb(){const m=myRank('24h');const inNow=m.rank!=null;if(inNow&&!S.lbIn){S.lbIn=true;save();toast(`You entered the Leaderboard at #${m.rank}!`);S.notifs.unshift({t:`You entered the 24h Leaderboard at #${m.rank}`,ts:Date.now(),u:1})}else if(!inNow&&S.lbIn){S.lbIn=false;save();toast('You dropped out of the Leaderboard',1)}
@@ -476,22 +476,7 @@ Object.assign(UI,{trN:null,trR:'24h',trState:'open',trKind:'all',trMore:false,tr
 const BIOS=['Slow entries, patient exits.','Charts first, opinions second.','Sizing small until the trend is clear.','Learning in public. Not financial advice.','Mostly spot, sometimes perps.'];
 const THESES=['Watching $S closely. Buyers keep showing up on every dip.\n\nStill observing.','$S looks oversold at these levels. Adding slowly.','Holding $S while volume stays healthy. Cutting if it fades.'];
 const TRC={};
-function trData(n){if(TRC[n])return TRC[n];const r=rng(hash('profile'+n)),R=()=>r();
-const live=ALL.filter(t=>t.kind==='token'&&!t.dead).sort((a,b)=>b.mc0-a.mc0);const used=new Set();const take=()=>{let t;do{t=pool[Math.floor(R()*pool.length)]}while(used.has(t.id));used.add(t.id);return t};
-const scale=Math.max(Math.abs(traderPnl(n,'30d')),3000);
-const big=live.filter(t=>t.mc0>=scale*20),pool=big.length>=30?big:live.slice(0,30);
-const mkPos=(t,v)=>({id:t.id,qty:v/t.p,entry:t.p/(1+(R()<.55?R()*1.2:-R()*.5))});
-const pos=Array.from({length:7+Math.floor(R()*6)},(_,i)=>mkPos(take(),scale*(1.4/(i+1))*(.6+R()*.6)));
-const perps=R()<.45?[{id:pick_(R,ALL.filter(t=>t.kind==='perp')).id,side:R()<.6?'long':'short',lev:[3,5,10][Math.floor(R()*3)],margin:scale*.04,entryK:1+(R()-.5)*.04}]:[];
-perps.forEach(p=>p.entry=DB[p.id].p*p.entryK);
-const closed=Array.from({length:9},()=>{const t=take(),pc=R()<.55?R()*180:-R()*70;return {id:t.id,pnl:scale*.05*R()*pc/50,pc,ago:1+Math.floor(R()*25)}});
-const now=Date.now(),H=36e5;
-const theses=pos.slice(0,3).map((p,i)=>({type:'Thesis',id:p.id,txt:THESES[i].replace('$S','$'+DB[p.id].sym),ts:now-(12+i*30)*H,likes:20+Math.floor(R()*150),views:900+Math.floor(R()*20000),older:3+Math.floor(R()*80),amt:p.qty*DB[p.id].p}));
-const trades=Array.from({length:14},(_,i)=>{const t=DB[pos[Math.floor(R()*pos.length)].id];return {type:R()<.5?'Buy':'Sell',id:t.id,amt:Math.exp(Math.log(30)+R()*Math.log(600)),mc:t.mc*(.8+R()*.4),ts:now-(40+i*9+R()*5)*H}});
-const addr=()=>'demo…'+Math.floor(R()*65536).toString(16).padStart(4,'0');
-const history=Array.from({length:18},(_,i)=>{const t=DB[pos[Math.floor(R()*Math.min(4,pos.length))].id];return {sym:t.sym,qty:(1+R()*40)/t.p,from:addr(),ts:now-(i*23+R()*15)*6e4}});
-return TRC[n]={name:n,bio:(ARCH[AR[n]]&&ARCH[AR[n]].bio)||BIOS[hash(n)%BIOS.length],following:5+Math.floor(R()*90),followers:TR[n]?.followers??200+Math.floor(R()*9000),hold:1+Math.floor(R()*20)+'d '+Math.floor(R()*23)+'h',count:50+Math.floor(R()*1500),joined:MON[Math.floor(R()*8)]+' 2026',cash:scale*(.02+R()*.08),pos,perps,closed,feed:[...theses,...trades].sort((a,b)=>b.ts-a.ts),history}}
-function pick_(r,a){return a[Math.floor(r()*a.length)]}
+function trData(n){const holdings=Object.entries(NH[n]||{}).filter(([id,h])=>DB[id]&&h&&h.qty>1e-12).map(([id,h])=>({id,qty:h.qty,entry:h.qty>0?h.cost/h.qty:DB[id].p,cost:h.cost,realized:h.realized||0}));const perp=NP[n]?[{...NP[n]}]:[];const closed=(NCLOSED[n]||[]).map(x=>({...x,ago:Math.max(0,Math.floor((Date.now()-x.ts)/864e5))}));const feed=FEED.filter(x=>x.tr===n).map(x=>({...x,mc:x.at,txt:x.note||x.type,likes:0,views:0,older:0}));const held=holdings.length?Math.round(holdings.reduce((a,p)=>a+Math.max(0,Date.now()-(NH[n][p.id].ts||Date.now())),0)/holdings.length/864e5):0;return TRC[n]={name:n,bio:(ARCH[AR[n]]&&ARCH[AR[n]].bio)||BIOS[hash(n)%BIOS.length],following:5+(hash(n)%90),followers:TR[n]?.followers??200+(hash(n)%9000),hold:held+'d 0h',count:feed.length+closed.length,joined:'Nov 2026',cash:NCASH[n]||0,pos:holdings,perps:perp,closed,feed,history:[]}}function pick_(r,a){return a[Math.floor(r()*a.length)]}
 const trPosVal=p=>p.qty*DB[p.id].p;
 const trPerpVal=p=>Math.max(0,p.margin*(1+p.lev*(p.side==='long'?1:-1)*(DB[p.id].p/p.entry-1)));
 const trEquity=d=>d.cash+d.pos.reduce((a,p)=>a+trPosVal(p),0)+d.perps.reduce((a,p)=>a+trPerpVal(p),0);
@@ -622,7 +607,7 @@ TN.filter(n=>!AR[n]).sort((a,b)=>hash(a)-hash(b)).forEach((n,i)=>AR[n]=left[i%le
 const archOf=n=>AR[n]||'small';
 const archIc=n=>ARCH[archOf(n)]&&AR[n]?`<span title="${ARCH[archOf(n)].lbl}" style="font-size:12px">${ARCH[archOf(n)].ic}</span>`:'';
 const archTag=n=>AR[n]?`<span class="pill">${ARCH[archOf(n)].ic} ${ARCH[archOf(n)].lbl}</span>`:'';
-const NH={},NP={},NC={},CROWD=[],NCASH={};
+const NH={},NP={},NC={},CROWD=[],NCASH={},NCLOSED={};
 TN.forEach(n=>NCASH[n]=10000+(hash(n)%90000));
 const nh=n=>NH[n]||(NH[n]={});
 function saveMarketLedger(){try{localStorage.setItem(LEDGER_KEY,JSON.stringify({holders:NH,npcCash:NCASH,graduated:LISTS.grad.filter(id=>BOND_IDS.has(id))}))}catch(e){}}
@@ -631,7 +616,7 @@ const mins=ts=>(Date.now()-ts)/6e4;
 const liveTok=()=>ALL.filter(t=>t.kind==='token'&&!t.dead);
 const nCount=n=>Object.keys(nh(n)).length;
 function nBuy(n,t,amount,note){if(!t||t.dead||t.p>t.p0*3)return null;const cash=NCASH[n]||0,usd=Math.min(amount,cash);if(usd<3)return null;const H=nh(n),old=H[t.id]||{qty:0,cost:0,realized:0,mc:0,p0:t.p,ts:Date.now()},pool=spotPool(t),account={cash,positions:old.qty>0?{[t.id]:{quantity:old.qty,costBasis:old.cost,realizedPnl:old.realized||0}}:{}};let fill;try{fill=ApexMarketEngine.executeBuy(pool,account,usd,.25)}catch(e){return null}const mcAt=t.mc*fill.executionPrice/t.p;NCASH[n]=account.cash;H[t.id]={...old,qty:fill.position.quantity,cost:fill.position.costBasis,mc:old.qty?((old.mc*old.cost+mcAt*usd)/(old.cost+usd)):mcAt,p0:t.p,ts:Date.now()};t.vol+=usd;movePrice(t);noteTx(t.id,true,usd);return {tr:n,type:'Buy',id:t.id,amt:usd,qty:fill.quantity,at:mcAt,ak:'mc',note,ts:Date.now()}}
-function nSell(n,id,frac,note){const t=DB[id],H=nh(n),h=H[id];if(!t||!h||!(h.qty>0))return null;const q=h.qty*Math.min(frac,1),pool=spotPool(t),account={cash:NCASH[n]||0,positions:{[id]:{quantity:h.qty,costBasis:h.cost,realizedPnl:h.realized||0}}};let fill;try{fill=ApexMarketEngine.executeSell(pool,account,q,.25)}catch(e){return null}const mcAt=t.mc,full=fill.position.quantity<=1e-12;NCASH[n]=account.cash;if(full)delete H[id];else H[id]={...h,qty:fill.position.quantity,cost:fill.position.costBasis,realized:fill.position.realizedPnl,ts:Date.now()};t.vol+=fill.output;movePrice(t);noteTx(id,false,fill.output);return {tr:n,type:full?'Sell':'Reduced',id,amt:fill.output,qty:q,at:mcAt,ak:'mc',note,ts:Date.now()}}
+function nSell(n,id,frac,note){const t=DB[id],H=nh(n),h=H[id];if(!t||!h||!(h.qty>0))return null;const q=h.qty*Math.min(frac,1),pool=spotPool(t),account={cash:NCASH[n]||0,positions:{[id]:{quantity:h.qty,costBasis:h.cost,realizedPnl:h.realized||0}}};let fill;try{fill=ApexMarketEngine.executeSell(pool,account,q,.25)}catch(e){return null}const mcAt=t.mc,full=fill.position.quantity<=1e-12;NCASH[n]=account.cash;if(full){delete H[id];(NCLOSED[n]||(NCLOSED[n]=[])).unshift({id,pnl:fill.realizedPnl,pct:fill.allocatedCost?fill.realizedPnl/fill.allocatedCost*100:0,ts:Date.now()});if(NCLOSED[n].length>100)NCLOSED[n].pop()}else H[id]={...h,qty:fill.position.quantity,cost:fill.position.costBasis,realized:fill.position.realizedPnl,ts:Date.now()};t.vol+=fill.output;movePrice(t);noteTx(id,false,fill.output);return {tr:n,type:full?'Sell':'Reduced',id,amt:fill.output,qty:q,at:mcAt,ak:'mc',note,ts:Date.now()}}
 const nPnl=p=>{const t=DB[p.id];return(t.p/p.entry-1)*(p.side==='long'?1:-1)*p.lev};
 function nPerp(n,t,margin,lev,side,note){if(NP[n]||!t||t.kind!=='perp')return null;lev=Math.min(lev,t.lev);NP[n]={id:t.id,side,lev,margin,entry:t.p,ts:Date.now()};
 return {tr:n,type:'Opened',id:t.id,amt:margin*lev,at:t.p,ak:'px',lev,side,note,ts:Date.now()}}
@@ -685,13 +670,13 @@ function aggregatedOrderFlow(){return {buys:0,sells:0,volume:0,orders:0,populati
 function npcStep(){const out=[],now=Date.now();for(let i=CROWD.length-1;i>=0;i--)if(CROWD[i].at<=now){const c=CROWD.splice(i,1)[0],t=DB[c.id],n=pickN(x=>/^(fomo|small)$/.test(archOf(x))),it=n&&t&&nBuy(n,t,archOf(n)==='fomo'?rnd(150,900):rnd(10,80),'Following the KOL call');if(it)out.push(it)}for(let k=0;k<4;k++){const n=pickN(()=>true);if(n){const it=B[archOf(n)](n);if(it)out.push(it)}}return out}
 function feedTick(){const its=npcStep(),it=its[0];saveMarketLedger();for(const x of its){FEED.unshift(x);followAlert(x)}while(FEED.length>80)FEED.pop();
 if(it&&/feed/.test(location.hash)&&window.scrollY<120&&$('#feedList')&&!UI.fHidden.includes(it.type)&&(!UI.fFol||S.follows.includes(it.tr)))$('#feedList').innerHTML=feedList()}
-function notifTick(){if(!S.nt.enable||S.nt.pause||!S.nt.trending)return;const t=pick(ALL.filter(x=>x.kind==='token'&&!x.dead));S.notifs.unshift({t:`Trending: ${t.sym} is being traded by ${Math.floor(rnd(6,40))} users`,ts:Date.now(),u:1});S.notifs=S.notifs.slice(0,20);save();if(/home|^$/.test(location.hash.replace(/^#\/?/,'')||'home')&&!$('#ov'))render(true)}
+function notifTick(){if(!S.nt.enable||S.nt.pause||!S.nt.trending)return;const candidates=liveTok().map(t=>({t,count:new Set(FEED.filter(f=>f.id===t.id&&Date.now()-f.ts<864e5).map(f=>f.tr)).size})).filter(x=>x.count>=3).sort((a,b)=>b.count-a.count);if(!candidates.length)return;const {t,count}=candidates[0];S.notifs.unshift({t:`Trending: ${t.sym} is being traded by ${count} traders`,ts:Date.now(),u:1});S.notifs=S.notifs.slice(0,20);save();if(/home|^$/.test(location.hash.replace(/^#\/?/,'')||'home')&&!$('#ov'))render(true)}
 /* ---------- boot ---------- */
 document.addEventListener('click',e=>{const el=e.target.closest('[data-act],[data-go]');if(!el)return;if(el.dataset.go){closeSheet();buzz();go(el.dataset.go);return}const f=ACT[el.dataset.act];if(f){if(!['closeSheet','follow','rmRec'].includes(el.dataset.act))buzz();f(el,e)}});
 document.addEventListener('input',e=>{const t=e.target;if(t.id==='tamt'&&UI.tr){UI.tr.amt=t.value;$('#est1').textContent=estTxt(DB[UI.tr.id],UI.tr,parseNum(t.value)||0)}if(t.id==='lev'&&UI.tr){UI.tr.lev=+t.value;$('#levv').textContent=t.value+'x';$('#est1').textContent=estTxt(DB[UI.tr.id],UI.tr,parseNum(UI.tr.amt)||0);const b=$('.cta');if(b&&UI.tr.mode==='buy')b.textContent=`Open ${UI.tr.lev}x ${UI.tr.side==='long'?'Long':'Short'}`}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet();if(e.key==='Enter'&&e.target.id==='amtin'){$('.cta')?.click()}});
 window.addEventListener('hashchange',()=>{closeSheet();UI.qt=false;render()});
-seedFeed();
+seedFeed();FEED.length=0;
 const NAV=[['home','home'],['search','search'],['feed','link'],['leaderboard','crown'],['profile','user']];
 const navIcon=(k,i)=>k==='profile'?`<img class="av" src="${S.user.avatar||IMG.AVATAR}" alt="">`:I(i,22);
 $('#app').innerHTML=`<aside class="side"><div class="brand"><img src="${IMG.LOGO}" alt="">${BRAND}</div>${NAV.map(([k,i])=>`<button class="navb" data-nav="${k}" data-go="${k}">${navIcon(k,i)}<span>${t_(k==='leaderboard'?'lb':k)}</span></button>`).join('')}<div class="sp"></div><div class="mini"><div class="l">Balance</div><div class="v" data-total></div><button class="btn pri sm" style="width:100%" data-act="deposit">${t_('deposit')}</button></div></aside><main id="main"></main><aside class="rail" id="rail"></aside>`;
