@@ -207,6 +207,31 @@ const KEY = 'apex-demo-v1';
   await test('trader profile shows archetype badge', async () => {
     await go('trader/kv4rl'); assert.ok((await page.textContent('#main')).includes('Whale'));
   });
+  await test('positions in rugged tokens are hidden behind Show hidden', async () => {
+    await go('profile');
+    const rows = () => page.locator('#main .list .row').count();
+    const header = () => page.locator('#main .ph span').first().textContent();
+    assert.strictEqual(await rows(), 0); assert.strictEqual(await header(), 'Positions (0)');
+    assert.ok((await page.textContent('[data-act="showHidden"]')).includes('(2)'));
+    await page.click('[data-act="showHidden"]');
+    assert.strictEqual(await rows(), 2); assert.strictEqual(await header(), 'Positions (2)');
+    assert.strictEqual((await page.textContent('[data-act="showHidden"]')).trim(), 'Hide');
+    await page.click('[data-act="showHidden"]'); assert.strictEqual(await rows(), 0);
+  });
+  await test('positions in live tokens are not hidden', async () => {
+    await deposit('100'); await go('token/SOL'); await act('qtBuy', { v: '100' }); await go('profile');
+    assert.strictEqual(await page.locator('#main .list .row').count(), 1);
+    assert.strictEqual(await page.locator('#main .ph span').first().textContent(), 'Positions (1)');
+    assert.ok((await page.textContent('[data-act="showHidden"]')).includes('(2)'));
+  });
+  await test('activity uses the profile picture', async () => {
+    await go('profile');
+    const pfp = await page.locator('.pav img').getAttribute('src');
+    const n = await page.locator('#main .fi .av img').count();
+    assert.ok(n > 0, 'no avatar images in activity');
+    assert.strictEqual(await page.locator('#main .fi .av img').first().getAttribute('src'), pfp);
+    assert.strictEqual(await page.locator('#main .fi .av:not(:has(img))').count(), 0);
+  });
   await test('delete account resets prices and state', async () => {
     await deposit('10'); await ev(() => { __apex.DB.SOL.p *= 3; }); await wait(1700);
     await act('doDelete'); await wait(600);
