@@ -117,7 +117,7 @@ function emptyBox(msg,extra=''){return `<div class="empty"><img src="${IMG.LOGO}
 function getPath(o,k){return k.split('.').reduce((a,c)=>a?.[c],o)}
 function setPath(o,k,v){const a=k.split('.');const l=a.pop();getPath(o,a.join('.')||'x')||0;a.reduce((x,c)=>x[c],o)[l]=v}
 /* ---------- sheets ---------- */
-function sheet(h){let ov=$('#ov');if(!ov){ov=document.createElement('div');ov.id='ov';ov.className='ov';ov.innerHTML='<div class="sheet"><i class="grab"></i><div id="sb"></div></div>';document.body.appendChild(ov);ov.addEventListener('mousedown',e=>{if(e.target===ov)closeSheet()})}$('#sb').innerHTML=h;$('.sheet',ov).scrollTop=0}
+function sheet(h){let ov=$('#ov');if(!ov){ov=document.createElement('div');ov.id='ov';ov.className='ov';ov.innerHTML='<div class="sheet"><i class="grab"></i><div id="sb"></div></div>';document.body.appendChild(ov);ov.addEventListener('mousedown',e=>{if(e.target===ov)closeSheet()})}$('#sb').innerHTML=h;$('.sheet',ov).classList.remove('full');$('.sheet',ov).scrollTop=0}
 function closeSheet(){$('#ov')?.remove();UI.tr=null}
 /* ---------- pages ---------- */
 function tokRow(t,mode){const c=t.chg>=0?'up':'dn';let r;
@@ -336,8 +336,6 @@ function xferHist(){sheet(`<h3>Transfer history</h3><div class="sd">Deposits, wi
 function transferSheet(dir){dir=dir||'t2p';sheet(`<h3>Transfer cash</h3><div class="sd">Move cash between your Tokens and Perps balances</div><div class="seg"><button class="${dir==='t2p'?'on acc':''}" data-act="transferSheet" data-v="t2p">Tokens → Perps</button><button class="${dir==='p2t'?'on acc':''}" data-act="transferSheet" data-v="p2t">Perps → Tokens</button></div><div class="nfo"><span>Available</span><b>${usd(dir==='t2p'?S.cash.tokens:S.cash.perps)}</b></div><div class="field"><span class="mut">$</span><input id="amtin" inputmode="decimal" placeholder="0.00"></div><div class="err" id="amte"></div><button class="cta acc" data-act="doTransfer" data-v="${dir}">Transfer</button>`)}
 function sendSheet(){sheet(`<h3>Send cash</h3><div class="sd">Available: ${usd(S.cash.tokens)}</div><div class="field"><span class="mut">@</span><input id="sendto" placeholder="username"></div><div class="field"><span class="mut">$</span><input id="amtin" inputmode="decimal" placeholder="0.00"></div><div class="err" id="amte"></div><button class="cta acc" data-act="doSend">Send</button>`)}
 function bellSheet(){S.notifs.forEach(n=>n.u=0);save();sheet(`<h3>Notifications</h3><div class="sd">${S.nt.enable?'You are up to date':'Notifications are turned off'}</div>${S.notifs.map(n=>`<div class="nrow"><span style="flex:1">${esc(n.t)}<div class="mut" style="font-size:11px;margin-top:2px">${ago(n.ts)} ago</div></span></div>`).join('')}`);if(location.hash.includes('home')||!location.hash)render()}
-function traderSheet(h){const t=TR[h]||{name:h,followers:S.followers,pnl:0,win:0};const me=h===S.user.username;const pos=ALL.filter(x=>x.kind==='token').slice(hash(h)%40,hash(h)%40+3);
-sheet(`<div style="display:flex;align-items:center;gap:12px">${tAv(h,52)}<div style="flex:1"><b style="font-size:18px">${esc(h)}</b><div class="mut" style="font-size:12px">@${esc(h.replace(/\s/g,''))}</div></div>${me?'':`<button class="fl ${S.follows.includes(h)?'on':''}" data-act="follow" data-h="${esc(h)}">${S.follows.includes(h)?'Following':'Follow'}</button>`}</div><div class="stats"><div><small>Followers</small><b>${nf(me?S.followers:t.followers,0)}</b></div><div><small>24h PnL</small><b class="up">${sgn(me?d24():traderPnl(h,'24h'))}</b></div><div><small>Win rate</small><b>${t.win||'-'}%</b></div></div><div class="mut" style="font-size:12px;margin-bottom:4px">Recent positions</div>${me?'<div class="mut">See your Profile.</div>':pos.map(x=>`<div class="row" data-act="token" data-id="${esc(x.id)}">${ico(x,34)}<div class="mid"><div class="nm">${esc(x.sym)}</div></div><div class="rt"><div class="px" data-p="${esc(x.id)}">${fmtP(x.p)}</div></div></div>`).join('')}`)}
 /* trade sheet */
 function sparkSvg(t){const a=t.h,mn=Math.min(...a),mx=Math.max(...a),w=400,h=96;const up=a[a.length-1]>=a[0];const pts=a.map((v,i)=>[i/(a.length-1)*w,6+(h-12)-(mx===mn?.5:(v-mn)/(mx-mn))*(h-12)]);const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join('');const c=up?'#2fe27a':'#ff5a3c';return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}L${w} ${h}L0 ${h}Z" fill="${c}" fill-opacity=".1"/><path d="${d}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`}
 function openToken(id){if(!DB[id]){toast('Details not available for this token.');return}UI.tf=null;UI.tTab='holders';UI.qt=false;go('token/'+encodeURIComponent(id))}
@@ -451,12 +449,108 @@ qtSave(){const b=[0,1,2].map(i=>parseNum($('#qb'+i).value)),s=[0,1,2].map(i=>par
 if(b.some(v=>!(v>0))||s.some(v=>!(v>0&&v<=100))||(!auto&&!(sl>0&&sl<=100))){toast('Check your values: buy > 0, sell 1-100%, slippage 1-100%',1);return}
 S.qt={buy:b.map(v=>Math.round(v*100)/100),sell:s,auto,slip:auto?S.qt.slip:sl};save();closeSheet();toast('Quick Trades saved');render(true)}
 });
+/* ---------- trader profiles (demo data) ---------- */
+Object.assign(UI,{trN:null,trR:'24h',trState:'open',trKind:'all',trMore:false,trMin:0,trTypes:{Buy:true,Sell:true,Thesis:true},trSheetState:'open',send:null});
+const BIOS=['Slow entries, patient exits.','Charts first, opinions second.','Sizing small until the trend is clear.','Learning in public. Not financial advice.','Mostly spot, sometimes perps.'];
+const THESES=['Watching $S closely. Buyers keep showing up on every dip.\n\nStill observing.','$S looks oversold at these levels. Adding slowly.','Holding $S while volume stays healthy. Cutting if it fades.'];
+const TRC={};
+function trData(n){if(TRC[n])return TRC[n];const r=rng(hash('profile'+n)),R=()=>r();
+const live=ALL.filter(t=>t.kind==='token'&&!t.dead).sort((a,b)=>b.mc0-a.mc0);const used=new Set();const take=()=>{let t;do{t=pool[Math.floor(R()*pool.length)]}while(used.has(t.id));used.add(t.id);return t};
+const scale=Math.max(Math.abs(traderPnl(n,'30d')),3000);
+const big=live.filter(t=>t.mc0>=scale*20),pool=big.length>=30?big:live.slice(0,30);
+const mkPos=(t,v)=>({id:t.id,qty:v/t.p,entry:t.p/(1+(R()<.55?R()*1.2:-R()*.5))});
+const pos=Array.from({length:7+Math.floor(R()*6)},(_,i)=>mkPos(take(),scale*(1.4/(i+1))*(.6+R()*.6)));
+const perps=R()<.45?[{id:pick_(R,ALL.filter(t=>t.kind==='perp')).id,side:R()<.6?'long':'short',lev:[3,5,10][Math.floor(R()*3)],margin:scale*.04,entryK:1+(R()-.5)*.04}]:[];
+perps.forEach(p=>p.entry=DB[p.id].p*p.entryK);
+const closed=Array.from({length:9},()=>{const t=take(),pc=R()<.55?R()*180:-R()*70;return {id:t.id,pnl:scale*.05*R()*pc/50,pc,ago:1+Math.floor(R()*25)}});
+const now=Date.now(),H=36e5;
+const theses=pos.slice(0,3).map((p,i)=>({type:'Thesis',id:p.id,txt:THESES[i].replace('$S','$'+DB[p.id].sym),ts:now-(12+i*30)*H,likes:20+Math.floor(R()*150),views:900+Math.floor(R()*20000),older:3+Math.floor(R()*80),amt:p.qty*DB[p.id].p}));
+const trades=Array.from({length:14},(_,i)=>{const t=DB[pos[Math.floor(R()*pos.length)].id];return {type:R()<.5?'Buy':'Sell',id:t.id,amt:Math.exp(Math.log(30)+R()*Math.log(600)),mc:t.mc*(.8+R()*.4),ts:now-(40+i*9+R()*5)*H}});
+const addr=()=>'demo…'+Math.floor(R()*65536).toString(16).padStart(4,'0');
+const history=Array.from({length:18},(_,i)=>{const t=DB[pos[Math.floor(R()*Math.min(4,pos.length))].id];return {sym:t.sym,qty:(1+R()*40)/t.p,from:addr(),ts:now-(i*23+R()*15)*6e4}});
+return TRC[n]={name:n,bio:BIOS[hash(n)%BIOS.length],following:5+Math.floor(R()*90),followers:TR[n]?.followers??200+Math.floor(R()*9000),hold:1+Math.floor(R()*20)+'d '+Math.floor(R()*23)+'h',count:50+Math.floor(R()*1500),joined:MON[Math.floor(R()*8)]+' 2026',cash:scale*(.02+R()*.08),pos,perps,closed,feed:[...theses,...trades].sort((a,b)=>b.ts-a.ts),history}}
+function pick_(r,a){return a[Math.floor(r()*a.length)]}
+const trPosVal=p=>p.qty*DB[p.id].p;
+const trPerpVal=p=>Math.max(0,p.margin*(1+p.lev*(p.side==='long'?1:-1)*(DB[p.id].p/p.entry-1)));
+const trEquity=d=>d.cash+d.pos.reduce((a,p)=>a+trPosVal(p),0)+d.perps.reduce((a,p)=>a+trPerpVal(p),0);
+const trPct=(d,R)=>{const pnl=traderPnl(d.name,R);return pnl/Math.max(trEquity(d)-pnl,1)*100};
+function trSeries(d,R){const end=trEquity(d),start=end-traderPnl(d.name,R),r=rng(hash('s'+d.name+R)),N=48,a=[];let w=0;for(let i=0;i<N;i++){const f=i/(N-1);w+=(r()-.5);a.push(start+(end-start)*f+w*Math.abs(end-start)*.12*Math.sin(f*Math.PI))}a[N-1]=end;return a}
+const trTokRow=p=>{const t=DB[p.id],v=trPosVal(p),pc=(t.p/p.entry-1)*100;return `<div class="row" data-act="token" data-id="${esc(t.id)}">${ico(t,42)}<div class="mid"><div class="nm">${esc(t.name)}</div><div class="sub">${abbr(p.qty)} ${esc(t.sym)}</div></div><div class="rt"><div class="px" data-trv="${esc(t.id)}" data-q="${p.qty}">${usd(v)}</div><div class="ch ${pc<0?'dn':'up'}">${pct(pc)}</div></div></div>`};
+const trPerpRow=p=>{const t=DB[p.id],v=trPerpVal(p),pc=(v/p.margin-1)*100;return `<div class="row" data-act="token" data-id="${esc(t.id)}">${ico(t,42)}<div class="mid"><div class="nm">${esc(t.sym)}</div><div class="sub">${levChip(p.side,p.lev)}</div></div><div class="rt"><div class="px">${usd(v)}</div><div class="ch ${pc<0?'dn':'up'}">${pct(pc)}</div></div></div>`};
+const trClosedRow=c=>{const t=DB[c.id];return `<div class="row" data-act="token" data-id="${esc(t.id)}">${ico(t,42)}<div class="mid"><div class="nm">${esc(t.name)}</div><div class="sub">Closed ${c.ago}d ago</div></div><div class="rt"><div class="px ${c.pnl<0?'dn':'up'}">${sgn(c.pnl)}</div><div class="ch ${c.pc<0?'dn':'up'}">${pct(c.pc)}</div></div></div>`};
+const trSeg=(act,v)=>`<div class="sw2">${[['open','Open ●'],['closed','Closed']].map(([k,l])=>`<button class="${v===k?'on':''}" data-act="${act}" data-v="${k}">${l}</button>`).join('')}</div>`;
+function trHead(d){const n=d.name,on=S.follows.includes(n);return `<div class="prow" style="align-items:center">${tAv(n,64)}<div style="display:flex;gap:10px"><button class="trbtn" data-act="trSend" data-h="${esc(n)}" aria-label="Send cash">${I('send',19)}</button><button class="trbtn fl ${on?'on':''}" data-act="follow" data-h="${esc(n)}">${on?'Following':'Follow'}</button></div></div>
+<div style="padding:10px 16px 0"><div style="font-size:22px;font-weight:800">${esc(n)}</div><div class="mut">@${esc(n.replace(/\s/g,''))} <span class="pill g">Demo</span></div><div style="margin-top:12px">${esc(d.bio)}</div></div>
+<div class="stats2" style="padding-top:12px;font-size:13px"><span><b style="color:#fff">${d.following}</b> Following</span><span><b style="color:#fff">${abbr(d.followers)}</b> Followers</span></div>
+<div class="stats2" style="padding-top:10px"><span>${I('clock',13)} ${d.hold} avg. hold</span><span>${I('swap',13)} ${abbr(d.count)} trades</span><span>${I('doc',13)} Joined ${d.joined}</span></div>`}
+function traderSheet(h){if(h===S.user.username){closeSheet();go('profile');return}const d=trData(h);UI.trN=h;UI.tr=null;
+const pnl=traderPnl(h,'24h'),pc=trPct(d,'24h'),open=UI.trSheetState==='open';
+const rows=open?[...d.pos].sort((a,b)=>trPosVal(b)-trPosVal(a)).slice(0,3).map(trTokRow):d.closed.slice(0,3).map(trClosedRow);
+sheet(`<div class="trsh">${trHead(d)}
+<div style="display:flex;justify-content:space-between;align-items:flex-end;padding:16px 16px 0;border-top:1px solid var(--line);margin-top:14px"><div style="min-width:0"><div class="big trbig">${money(trEquity(d))}</div><div class="d24 ${pnl<0?'dn':'up'}">${sgn(pnl)} (${pct(pc)}) <span class="mut">24h</span></div></div><div style="flex:1 1 60px;min-width:0;max-width:130px;height:56px;margin-left:10px">${chartSvg(trSeries(d,'24h'),pnl>=0)}</div></div>
+<div class="ph"><span>Top positions</span>${trSeg('trSheetSeg',UI.trSheetState)}</div><div class="list">${rows.join('')}</div>
+<div class="pad"><button class="btn block" style="border:1px solid var(--line)" data-go="trader/${encodeURIComponent(h)}">View all positions</button></div></div>`)}
+function trActivity(d){const list=d.feed.filter(f=>UI.trTypes[f.type]&&f.amt>=UI.trMin);if(!list.length)return emptyBox('Nothing matches your filters.');
+return list.map(f=>{const t=DB[f.id],head=`<div class="top">${esc(d.name)}${f.type!=='Thesis'?chipT(f.type):''}<span class="ago">${ago(f.ts)}</span></div>`;
+if(f.type!=='Thesis')return `<div class="fi">${tAv(d.name,32)}<div class="b">${head}<div class="ln" data-act="token" data-id="${esc(t.id)}">${ico(t,28)}<span>${esc(t.sym)}</span><span>$${abbr(f.amt)} <small>at</small> $${abbr(f.mc)} MC</span></div></div></div>`;
+const p=d.pos.find(x=>x.id===f.id),v=trPosVal(p),g=v-p.qty*p.entry,liked=S.trLikes?.[d.name+f.id];
+return `<div class="fi">${tAv(d.name,32)}<div class="b">${head}<div style="white-space:pre-line">${esc(f.txt)}</div><div class="cardx trpos" data-act="token" data-id="${esc(t.id)}">${ico(t,36)}<div style="flex:1"><small class="mut">Position</small><div style="font-weight:800">${esc(t.sym)}</div></div><div style="text-align:right"><b>${usd(v,0)}</b><div class="${g<0?'dn':'up'}" style="font-size:13px">${sgn(g)}</div></div></div><div class="tg" style="margin-top:10px;gap:18px"><button data-act="trLike" data-id="${esc(f.id)}" style="display:flex;gap:5px;align-items:center;${liked?'color:#6674ff':''}">${I('heart',17)} ${f.likes+(liked?1:0)}</button><span style="display:flex;gap:5px;align-items:center">${I('eye',17)} ${abbr(f.views)}</span><span>${f.older} older</span></div></div></div>`}).join('')}
+function pgTrader(r){const n=decodeURIComponent(r[0]||'');if(!n)return pgHome();if(n===S.user.username)return pgProfile();
+if(!TN.includes(n)&&!LBT.some(x=>x[0]===n))return `<div class="page">${emptyBox('Trader not found.')}</div>`;
+if(UI.trN!==n){UI.trN=n;UI.trR='24h';UI.trState='open';UI.trKind='all';UI.trMore=false}
+const d=trData(n),R=UI.trR,pnl=traderPnl(n,R),open=UI.trState==='open',k=UI.trKind;
+let rows;if(open)rows=[...(k!=='perps'?[...d.pos].sort((a,b)=>trPosVal(b)-trPosVal(a)).map(trTokRow):[]),...(k!=='tokens'?d.perps.map(trPerpRow):[])];
+else rows=k==='perps'?[]:d.closed.map(trClosedRow);
+const shown=UI.trMore?rows:rows.slice(0,5);
+return `<div class="page"><div class="hd"><button class="ibtn" data-act="tback" aria-label="Back">${I('back',22)}</button><span style="flex:1"></span><button class="ibtn" data-act="trShare" aria-label="Share">${I('share',19)}</button><button class="ibtn" data-act="trHist" aria-label="Trade history">${I('hist',19)}</button></div>
+${trHead(d)}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:18px 16px 0;margin-top:14px;border-top:1px solid var(--line)"><div><div class="big trbig" data-treq>${money(trEquity(d))}</div><div class="d24 ${pnl<0?'dn':'up'}">${sgn(pnl)} <span class="mut">${R}</span></div></div><div class="sw2">${['24h','7d','30d'].map(x=>`<button class="${R===x?'on':''}" data-act="trRange" data-v="${x}">${x}</button>`).join('')}</div></div>
+<div class="chart">${chartSvg(trSeries(d,R),pnl>=0)}</div>
+<div class="cash"><span class="c">$</span><div class="g">Total cash<b>${usd(d.cash)}</b></div></div>
+<div class="ph"><span>Positions (${rows.length})</span>${trSeg('trSeg',UI.trState)}</div>
+<div class="chips" style="padding-top:2px">${[['all','All'],['tokens','Tokens'],['perps','Perps']].map(([x,l])=>`<button class="chip ${k===x?'on':''}" data-act="trKind" data-v="${x}">${l}</button>`).join('')}</div>
+<div class="list">${shown.join('')||`<div class="empty" style="padding:26px 0">No ${open?'open':'closed'} positions</div>`}</div>
+${rows.length>5?`<div style="text-align:center;padding:8px"><button class="chip on" data-act="trShowMore">${UI.trMore?'Show less':'Show more'}</button></div>`:''}
+<div class="ph" style="border-top:1px solid var(--line);margin-top:8px"><span>Activity</span><button class="ibtn" data-act="trFilter" aria-label="Filter activity">${I('filt',18)}</button></div>
+<div id="trAct">${trActivity(d)}</div></div>`}
+function trFilterSheet(){const types=[['Buy','Buys'],['Sell','Sells'],['Thesis','Theses']],any=Object.values(UI.trTypes).some(Boolean);
+sheet(`<div style="display:flex;align-items:center"><span style="width:48px"></span><h3 style="flex:1">Filters</h3><button class="mut" style="width:48px" data-act="trReset">Reset</button></div><div style="margin:12px 0 8px;font-weight:700">Minimum size</div><div class="grp">${[[0,'All'],[100,'>$100'],[1000,'>$1K'],[10000,'>$10K']].map(([v,l])=>`<button class="opt ${UI.trMin===v?'on':''}" data-act="trMinSize" data-v="${v}">${l}</button>`).join('')}</div><div class="rl" style="border:0;margin-top:12px"><span class="mut">Feed type</span><button style="color:var(--acc2);font-weight:700" data-act="trAll">${any?'Deselect all':'Select all'}</button></div>${types.map(([k,l])=>`<label class="rl" style="border:0"><span>${l}</span><input type="checkbox" class="trck" data-k="${k}" ${UI.trTypes[k]?'checked':''}></label>`).join('')}<button class="btn block" style="border:1px solid var(--line);margin-top:10px" data-act="closeSheet">Close</button>`)}
+const trRefresh=()=>{const e=$('#trAct');if(e&&UI.trN)e.innerHTML=trActivity(trData(UI.trN))};
+/* send cash with keypad */
+function sendKeypad(to){UI.send={to,v:''};UI.tr=null;drawSend();$('.sheet').classList.add('full')}
+function drawSend(){const s=UI.send,cash=S.cash.tokens,a=parseNum(s.v),ok=a>0&&a<=cash+1e-9;
+sheet(`<div class="trsend"><div style="display:flex;gap:12px;align-items:center">${tAv(s.to,48)}<div><b>${esc(s.to)}</b><div class="mut" style="font-size:13px">@${esc(s.to.replace(/\s/g,''))}</div></div></div>
+<div class="amtbig"><div class="${s.v?'':'dim'}">$${esc(s.v||'0')}</div><button class="chip on" data-act="cashSheet">$ Cash balance ›</button></div>
+<div class="q">${[10,25,50,100].map(p=>`<button data-act="kpPct" data-v="${p}">${p===100?'Max':p+'%'}</button>`).join('')}</div>
+<div class="kp">${['1','2','3','4','5','6','7','8','9','.','0','del'].map(k=>`<button data-act="kp" data-v="${k}" aria-label="${k==='del'?'Delete':k}">${k==='del'?'⌫':k}</button>`).join('')}</div>
+<div class="mut" style="font-size:13px;margin:8px 0">${usd(cash)} available</div>
+<button class="btn block ${ok?'pri':''}" data-act="kpSend" ${ok?'':'disabled'}>${!(a>0)?'Enter an amount':ok?'Send '+usd(a):'Not enough cash'}</button></div>`);
+$('.sheet').classList.add('full')}
+function kpPress(k){const s=UI.send;if(!s)return;let v=s.v;if(k==='del')v=v.slice(0,-1);else if(k==='.'){if(!v.includes('.'))v=(v||'0')+'.'}else if(v==='0')v=k;else if(/\.\d\d$/.test(v)||v.replace(/\..*/,'').length>=9&&!v.includes('.'))return;else v+=k;s.v=v;drawSend()}
+Object.assign(ACT,{
+trader(el){traderSheet(el.dataset.h)},
+trSheetSeg(el){UI.trSheetState=el.dataset.v;traderSheet(UI.trN)},
+trRange(el){UI.trR=el.dataset.v;render(true)},trSeg(el){UI.trState=el.dataset.v;UI.trMore=false;render(true)},trKind(el){UI.trKind=el.dataset.v;UI.trMore=false;render(true)},trShowMore(){UI.trMore=!UI.trMore;render(true)},
+trShare(){const l=`${BRAND.toLowerCase()}.app/${UI.trN.replace(/\s/g,'')}`;if(navigator.clipboard)navigator.clipboard.writeText(l).then(()=>toast('Profile link copied'),()=>toast(l));else toast(l)},
+trHist(){const d=trData(UI.trN);sheet(`<h3>Trade history</h3><div class="sd">@${esc(d.name.replace(/\s/g,''))} · demo data</div>${d.history.map(x=>`<div class="rl"><span><b>Received</b><div class="mut" style="font-size:11px">${dt(x.ts)}</div></span><span style="text-align:right"><b><span class="up">+</span>${abbr(x.qty)} ${esc(x.sym)}</b><div class="mut" style="font-size:11px">From ${x.from}</div></span></div>`).join('')}`);$('.sheet').classList.add('full')},
+trLike(el){S.trLikes=S.trLikes||{};const k=UI.trN+el.dataset.id;S.trLikes[k]=!S.trLikes[k];save();trRefresh()},
+trFilter(){trFilterSheet()},
+trMinSize(el){UI.trMin=+el.dataset.v;trFilterSheet();trRefresh()},
+trAll(){const on=!Object.values(UI.trTypes).some(Boolean);UI.trTypes={Buy:on,Sell:on,Thesis:on};trFilterSheet();trRefresh()},
+trReset(){UI.trMin=0;UI.trTypes={Buy:true,Sell:true,Thesis:true};trFilterSheet();trRefresh()},
+trSend(el){sendKeypad(el.dataset.h)},
+kp(el){kpPress(el.dataset.v)},
+kpPct(el){const c=S.cash.tokens*(+el.dataset.v)/100;UI.send.v=c>=.01?String(Math.floor(c*100+1e-6)/100):'';drawSend()},
+kpSend(){const s=UI.send,a=parseNum(s.v);if(!(a>0&&a<=S.cash.tokens+1e-9))return;S.cash.tokens=Math.max(0,S.cash.tokens-a);S.xfer.unshift({type:'Send',amt:-a,via:'to @'+s.to,ts:Date.now()});save();closeSheet();UI.send=null;toast(`Sent ${usd(a)} to @${s.to}`);render(true)}
+});
+document.addEventListener('change',e=>{if(e.target.classList.contains('trck')){UI.trTypes[e.target.dataset.k]=e.target.checked;trFilterSheet();trRefresh()}});
+PAGES.trader=pgTrader;
 function showLogin(){if($('#login'))return;const d=document.createElement('div');d.id='login';d.className='login';d.innerHTML=`<img src="${IMG.LOGO}" alt=""><h1>${BRAND}</h1><p>Trade tokens and perps, follow top traders and climb the leaderboard. Demo build with simulated markets.</p><button class="btn pri" style="padding:14px 34px" data-act="doLogin">Enter demo account</button>`;document.body.appendChild(d)}
 /* ---------- router/render ---------- */
 function go(h){if(location.hash==='#/'+h)render();else location.hash='#/'+h}
 function render(keep){const h=location.hash.replace(/^#\/?/,'')||'home';const [p,...r]=h.split('/');const fn=PAGES[p]||pgHome;const y=window.scrollY;
 const q=$('#sq');const hadSq=q&&document.activeElement===q;
-$('#main').innerHTML=fn(r);document.body.classList.toggle('tok',p==='token');
+$('#main').innerHTML=fn(r);document.body.classList.toggle('tok',p==='token'||p==='trader');
 $$('[data-nav]').forEach(b=>{const k=b.dataset.nav;b.classList.toggle('on',k===p||(k==='profile'&&(p==='rewards'||p==='settings')))});
 if(keep)window.scrollTo(0,y);else window.scrollTo(0,0);
 bindPage(p,r);updateDom();rail()}
@@ -469,6 +563,8 @@ function rail(){const el=$('#rail');if(!el)return;const g=[...ALL].filter(t=>t.k
 el.innerHTML=`<div class="mini"><div class="l">Portfolio</div><div class="v" data-total>${money(total())}</div><div class="d24" data-d24></div><button class="btn pri sm" style="margin-top:12px;width:100%" data-act="deposit">${t_('deposit')}</button></div><div><h4>Top movers</h4>${g.map(t=>`<div class="row" data-act="token" data-id="${esc(t.id)}" style="padding:8px">${ico(t,32)}<div class="mid"><div class="nm">${esc(t.sym)}</div></div><div class="rt"><div class="ch up" data-c="${esc(t.id)}">${pct(t.chg)}</div></div></div>`).join('')}</div><div><h4>Live trades</h4>${FEED.filter(f=>!UI.fHidden.includes(f.type)).slice(0,5).map(f=>`<div class="rl"><span>${esc(f.tr)} <span class="mut">${f.type}</span> ${esc((DB[f.id]||{}).sym||f.id)}</span><span class="mut" data-ago="${f.ts}">${ago(f.ts)}</span></div>`).join('')}</div>`}
 /* ---------- live updates ---------- */
 function updateDom(){
+$$('[data-trv]').forEach(e=>{const t=DB[e.dataset.trv];if(t)e.textContent=usd(t.p*+e.dataset.q)});
+{const e=$('[data-treq]');if(e&&UI.trN)e.innerHTML=money(trEquity(trData(UI.trN)))}
 $$('[data-p]').forEach(e=>{const t=DB[e.dataset.p];if(!t)return;const s=fmtP(t.p);if(e.textContent!==s){const old=e._v||t.p;e.textContent=s;e.classList.remove('flash-up','flash-dn');void e.offsetWidth;e.classList.add(t.p>=old?'flash-up':'flash-dn');e._v=t.p}});
 $$('[data-c]').forEach(e=>{const t=DB[e.dataset.c];if(!t)return;e.textContent=pct(t.chg);e.className=e.className.replace(/\b(up|dn)\b/g,'')+' '+(t.chg>=0?'up':'dn')});
 $$('[data-mc]').forEach(e=>{const t=DB[e.dataset.mc];if(t)e.textContent='$'+abbr(t.mc)+' MC'});

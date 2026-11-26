@@ -115,6 +115,31 @@ const KEY = 'apex-demo-v1';
     await go('leaderboard'); await page.locator('.list .row').first().click();
     assert.ok((await page.textContent('#sb')).includes('398,738.66'));
   });
+  const openTrader = async () => { await go('leaderboard'); await page.locator('.list .row').first().click(); };
+  await test('trader preview opens full profile', async () => {
+    await openTrader(); await page.click('#sb [data-go^="trader/"]'); await wait(200);
+    assert.ok((await ev(() => location.hash)).startsWith('#/trader/kv4rl'));
+    assert.strictEqual(await page.locator('#ov').count(), 0);
+    const rows = () => page.locator('#main .list .row').count();
+    assert.strictEqual(await rows(), 5); await page.click('[data-act="trShowMore"]'); assert.ok(await rows() > 5);
+    await page.click('[data-act="trSeg"][data-v="closed"]'); assert.strictEqual(await rows(), 5);
+    await page.click('[data-act="trRange"][data-v="7d"]'); assert.ok((await page.textContent('#main')).includes('7d'));
+    await page.click('[data-act="trHist"]'); assert.strictEqual(await page.locator('#sb .rl').count(), 18);
+  });
+  await test('activity filters', async () => {
+    await go('trader/kv4rl'); const n = () => page.locator('#trAct .fi').count(); const all = await n();
+    await page.click('[data-act="trFilter"]'); await page.uncheck('.trck[data-k="Buy"]'); await page.uncheck('.trck[data-k="Sell"]');
+    assert.strictEqual(await n(), 3); await page.click('[data-act="trReset"]'); assert.strictEqual(await n(), all);
+    await page.click('[data-act="trAll"]'); assert.strictEqual(await n(), 0);
+    await page.click('[data-act="trReset"]');
+  });
+  await test('send cash with keypad', async () => {
+    await deposit('20'); await go('trader/kv4rl'); await page.click('[data-act="trSend"]');
+    const btn = page.locator('[data-act="kpSend"]'); assert.ok(await btn.isDisabled());
+    for (const k of ['9', '9']) await page.click(`[data-act="kp"][data-v="${k}"]`);
+    assert.strictEqual(await btn.textContent(), 'Not enough cash');
+    await page.click('[data-act="kpPct"][data-v="25"]'); await btn.click(); near((await state()).cash.tokens, 15);
+  });
   await test('flip buy and sell applies to token page', async () => {
     await act('tog', { k: 'st.flip' }); await go('token/SOL');
     assert.strictEqual(await page.locator('.tbtns button').first().getAttribute('data-act'), 'tBuy');
