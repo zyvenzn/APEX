@@ -258,7 +258,7 @@ const KEY = 'apex-demo-v1';
     assert.strictEqual(flow.population,1000000); assert.ok(flow.orders>0&&flow.volume>0); assert.ok(moved);
   });
   await test('top holders come from the ledger and are capped at ten', async () => {
-    await ev(() => __apex.market.flow(240));
+    await ev(() => __apex.market.flow(240, 'VEXDIAL'));
     const hs=await ev(() => __apex.market.holders('VEXDIAL'));
     assert.ok(hs.length>0); assert.ok(hs.length<=10);
     for(let i=1;i<hs.length;i++)assert.ok(hs[i-1].qty>=hs[i].qty);
