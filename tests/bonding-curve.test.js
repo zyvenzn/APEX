@@ -100,11 +100,16 @@ test('graduated AMM continues to quote swaps', () => {
   const m = market({ baseReserve: 1_000, quoteReserve: 1, circulatingSupply: 10_000_000 });
   Curve.executeBuy(m, { cash: 100_000, positions: {} }, 10_000, 1);
   const pool = m.ammPool;
-  const q = Curve.quoteAmmBuy(pool, 10);
-  assert.ok(q.amountBase > 0);
+  const account = { cash: 100, positions: {} };
   const before = pool.quoteReserve / pool.baseReserve;
-  Curve.applyAmmQuote(pool, q);
+  const buy = Curve.executeAmmBuy(pool, account, 10, 1);
+  assert.ok(buy.amountBase > 0);
   assert.ok(pool.quoteReserve / pool.baseReserve > before);
+  assert.equal(account.cash, 90);
+  const sell = Curve.executeAmmSell(pool, account, buy.amountBase / 2, 1);
+  assert.ok(sell.amountQuote > 0);
+  assert.ok(account.cash > 90);
+  assert.ok(account.positions.TEST.quantity > 0);
 });
 
 test('below-target market remains bonding and progress is bounded', () => {
