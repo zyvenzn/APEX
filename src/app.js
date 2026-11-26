@@ -63,6 +63,8 @@ nt:{enable:true,asset:'All',price:true,pause:false,tokMin:1000,perpMin:50000,tre
 qt:{buy:[2.17,4.27,1],sell:[25,50,100],auto:false,slip:15},lang:'system',notifs:[{t:'dryflip started following you',ts:Date.now()-3e6,u:1},{t:'Trending: GTA6 is being traded by 12 users',ts:Date.now()-9e6,u:1},{t:BRAND+' v1.106 is live: faster charts and new leaderboards',ts:Date.now()-5e7,u:0}],taxEmail:''});
 let S;try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
 S=Object.assign(seed(),S||{});
+S.marketPools=S.marketPools||{};
+ALL.filter(t=>t.kind==='token').forEach(t=>marketPool(t));
 S.thesis=S.thesis||{};S.qt=S.qt||{buy:[1,5,25],sell:[25,50,100],auto:false,slip:15};S.pos.forEach(p=>{if(p.kind==='token'&&!p.entryMC)p.entryMC=p.id==='peldier'?95700:p.id==='EvilGPT'?2100:(DB[p.id]?DB[p.id].mc*p.invested/Math.max(p.qty*DB[p.id].p,1e-9):1)});
 let saveT;const save=()=>{clearTimeout(saveT);saveT=setTimeout(()=>{try{const c={...S,user:{...S.user}};localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}},100)};
 const uid=()=>Math.random().toString(36).slice(2,9);
@@ -77,8 +79,64 @@ const d24=()=>total()-S.base24-netDep();
 const buzz=()=>{if(S.st.haptics&&navigator.vibrate)try{navigator.vibrate(8)}catch(e){}};
 function toast(m,err){const e=document.createElement('div');e.className='toast'+(err?' err':'');e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),2600)}
 function logFeed(item){FEED.unshift({...item,tr:S.user.username,ts:Date.now(),me:1});if(FEED.length>80)FEED.pop()}
-function buyToken(id,amt){const t=DB[id];if(!(amt>0))return 'Enter an amount.';if(amt>S.cash.tokens+1e-9)return 'Not enough cash. Deposit first.';S.cash.tokens-=amt;const q=amt/t.p;let p=S.pos.find(x=>x.open&&x.kind==='token'&&x.id===id);if(p){p.entryMC=((p.entryMC||t.mc)*p.invested+t.mc*amt)/(p.invested+amt);p.qty+=q;p.invested+=amt}else S.pos.push({uid:uid(),kind:'token',id,qty:q,invested:amt,entryMC:t.mc,open:true,ts:Date.now()});S.act.unshift({type:'Buy',id,amt,qty:q,at:t.mc,ak:'mc',ts:Date.now()});logFeed({type:'Buy',id,amt,at:t.mc,ak:'mc'});save();return ''}
-function sellToken(id,frac){const t=DB[id];const p=S.pos.find(x=>x.open&&x.kind==='token'&&x.id===id);if(!p)return 'No position.';const v=val(p)*frac,c=p.invested*frac;S.cash.tokens+=v;S.act.unshift({type:'Sell',id,amt:v,qty:p.qty*frac,at:t.mc,ak:'mc',ts:Date.now()});logFeed({type:frac>=.999?'Sell':'Reduced',id,amt:v,at:t.mc,ak:'mc'});p.qty*=1-frac;p.invested-=c;p.real=(p.real||0)+(v-c);if(frac>=.999){p.open=false;S.closed.unshift({uid:uid(),id,kind:'token',pnl:p.real,pct:(v-c)/(c||1)*100,ts:Date.now()})}save();return ''}
+const AMM_FEE=0.003;
+function marketPool(t){
+  S.marketPools=S.marketPools||{};
+  let p=S.marketPools[t.id];
+  if(!p){
+    const supply=Math.max(t.mc0/Math.max(t.p0,1e-12),1);
+    const tokenReserve=supply*.5;
+    p={token:tokenReserve,quote:tokenReserve*t.p0};
+    S.marketPools[t.id]=p;
+  }
+  return p;
+}
+function syncMarket(t,p){
+  t.p=Math.max(p.quote/p.token,1e-12);
+  t.mc=t.mc0*(t.p/t.p0);
+  t.chg=(t.p/t.base-1)*100;
+  t.h.push(t.p);if(t.h.length>90)t.h.shift();
+}
+function buyToken(id,amt){
+  const t=DB[id];if(!t||t.kind!=='token')return 'Token not found.';
+  if(!(amt>0))return 'Enter an amount.';
+  if(amt>S.cash.tokens+1e-9)return 'Not enough cash. Deposit first.';
+  const pool=marketPool(t),before=t.p,spotBefore=pool.quote/pool.token;
+  const net=amt*(1-AMM_FEE);
+  const out=pool.token*net/(pool.quote+net);
+  if(!(out>0&&out<pool.token))return 'Trade size is too large.';
+  const avg=amt/out;
+  pool.quote+=amt;pool.token-=out;
+  syncMarket(t,pool);
+  S.cash.tokens-=amt;
+  let pos=S.pos.find(x=>x.open&&x.kind==='token'&&x.id===id);
+  if(pos){pos.entryMC=((pos.entryMC||t.mc)*pos.invested+t.mc*amt)/(pos.invested+amt);pos.qty+=out;pos.invested+=amt}
+  else S.pos.push({uid:uid(),kind:'token',id,qty:out,invested:amt,entryMC:t.mc,open:true,ts:Date.now()});
+  const impact=(t.p/spotBefore-1)*100;
+  S.lastTradeImpact={id,side:'buy',amount:amt,qty:out,avg,spotBefore,spotAfter:t.p,impact,ts:Date.now()};
+  S.act.unshift({type:'Buy',id,amt,qty:out,at:t.mc,ak:'mc',impact,ts:Date.now()});
+  logFeed({type:'Buy',id,amt,at:t.mc,ak:'mc'});save();return '';
+}
+function sellToken(id,frac){
+  const t=DB[id],p=S.pos.find(x=>x.open&&x.kind==='token'&&x.id===id);
+  if(!t||!p)return 'No position.';
+  if(!(frac>0&&frac<=1))return 'Invalid sell amount.';
+  const pool=marketPool(t),spotBefore=pool.quote/pool.token;
+  const qty=p.qty*frac,netQty=qty*(1-AMM_FEE);
+  const quoteOut=pool.quote*netQty/(pool.token+netQty);
+  if(!(quoteOut>0&&quoteOut<pool.quote))return 'Trade size is too large.';
+  const avg=quoteOut/qty;
+  pool.token+=qty;pool.quote-=quoteOut;
+  syncMarket(t,pool);
+  const costBasis=p.invested*frac;
+  S.cash.tokens+=quoteOut;
+  S.act.unshift({type:'Sell',id,amt:quoteOut,qty,at:t.mc,ak:'mc',impact:(t.p/spotBefore-1)*100,ts:Date.now()});
+  logFeed({type:frac>=.999?'Sell':'Reduced',id,amt:quoteOut,at:t.mc,ak:'mc'});
+  p.qty*=1-frac;p.invested-=costBasis;p.real=(p.real||0)+(quoteOut-costBasis);
+  if(frac>=.999){p.open=false;S.closed.unshift({uid:uid(),id,kind:'token',pnl:p.real,pct:(p.real/(p.invested+costBasis||1))*100,ts:Date.now()})}
+  S.lastTradeImpact={id,side:'sell',amount:quoteOut,qty,avg,spotBefore,spotAfter:t.p,impact:(t.p/spotBefore-1)*100,ts:Date.now()};
+  save();return '';
+}
 function openPerp(id,side,lev,margin){const t=DB[id];if(!(margin>0))return 'Enter margin.';if(margin>S.cash.perps+1e-9)return 'Not enough perps cash. Use Transfer cash or Deposit.';S.cash.perps-=margin;S.pos.push({uid:uid(),kind:'perp',id,side,lev,margin,entry:t.p,open:true,ts:Date.now()});S.act.unshift({type:'Opened',id,amt:margin*lev,at:t.p,ak:'px',lev,side,ts:Date.now()});logFeed({type:'Opened',id,amt:margin*lev,at:t.p,ak:'px',lev,side});save();return ''}
 function closePos(uidv,why){const p=S.pos.find(x=>x.uid===uidv&&x.open);if(!p)return;const v=val(p),c=cost(p);S.cash[p.kind==='perp'?'perps':'tokens']+=v;p.open=false;const pnl=v-c;S.closed.unshift({uid:uid(),id:p.id,kind:p.kind,side:p.side,lev:p.lev,pnl,pct:pnl/c*100,ts:Date.now()});const t=DB[p.id];S.act.unshift({type:why||'Closed',id:p.id,amt:v,at:p.kind==='perp'?t.p:t.mc,ak:p.kind==='perp'?'px':'mc',lev:p.lev,side:p.side,ts:Date.now()});logFeed({type:why==='Liquidated'?'Liquidated':'Closed',id:p.id,amt:v,at:t.p,ak:'px',lev:p.lev,side:p.side,pnl,pct:pnl/c*100});save()}
 /* ---------- i18n ---------- */
@@ -454,7 +512,7 @@ $$('[data-ago]').forEach(e=>e.textContent=ago(+e.dataset.ago));
 const pc=$('#pchart');if(pc&&/profile/.test(location.hash+(location.hash?'':'x'))){const s=series(UI.pRange);pc.innerHTML=chartSvg(s.a,s.delta>=0);const r=$('[data-d24r]');if(r){r.className='d24 '+(s.delta>=0?'up':'dn');r.innerHTML=`${sgn(s.delta)} <span class="mut">${UI.pRange}</span>`}}
 }
 let tickN=0;
-function tick(){tickN++;for(const t of ALL){if(t.dead)continue;const d=(Math.random()-.5)*2*t.vola;t.p=Math.max(t.p*(1+d),1e-12);if(t.kind==='token')t.mc=t.mc0*(t.p/t.p0);t.chg=(t.p/t.base-1)*100;t.h.push(t.p);if(t.h.length>90)t.h.shift()}
+function tick(){tickN++;for(const t of ALL){if(t.dead)continue;const d=(Math.random()-.5)*2*t.vola;if(t.kind==='token'){const pool=marketPool(t),scale=Math.max(1e-9,1+d);pool.quote*=scale;pool.token/=scale;syncMarket(t,pool)}else{t.p=Math.max(t.p*(1+d),1e-12);t.chg=(t.p/t.base-1)*100;t.h.push(t.p);if(t.h.length>90)t.h.shift()}}
 S.pos.filter(p=>p.open&&p.kind==='perp'&&val(p)<=0.0001).forEach(p=>{closePos(p.uid,'Liquidated');toast(`${DB[p.id].sym} ${p.lev}x position liquidated`,1);render(true)});
 if(!document.hidden){updateDom();if(tickN%4===0){rail();checkLb()}}}
 function feedTick(){const it=genFeed();FEED.unshift(it);if(FEED.length>80)FEED.pop();
