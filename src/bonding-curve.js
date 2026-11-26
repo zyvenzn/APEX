@@ -108,7 +108,8 @@
 
   function maybeGraduate(market) {
     if (market.status !== 'BONDING' || marketCap(market) + EPS < market.graduationTargetUsd) return null;
-    return graduate(market);
+    graduate(market);
+    return clone(market.graduation);
   }
 
   function executeBuy(market, account, amountQuote, maxImpact = 1) {
