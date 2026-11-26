@@ -88,7 +88,7 @@ test('graduation happens at threshold and migrates exact reserves', () => {
 
 test('graduation is idempotent and old curve is permanently closed', () => {
   const m = market({ baseReserve: 1_000, quoteReserve: 1, circulatingSupply: 10_000_000 });
-  Curve.executeBuy(m, { cash: 100_000, positions: {} }, 10_000, 1);
+  Curve.executeBuy(m, { cash: 100_000, positions: {} }, 10_000, 100000);
   const first = JSON.stringify(m.ammPool);
   const second = JSON.stringify(Curve.graduate(m));
   assert.equal(second, first);
