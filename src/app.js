@@ -128,7 +128,7 @@ function sheet(h){let ov=$('#ov');if(!ov){ov=document.createElement('div');ov.id
 function closeSheet(){$('#ov')?.remove();UI.tr=null}
 /* ---------- pages ---------- */
 function tokRow(t,mode){const c=t.chg>=0?'up':'dn';let r;
-if(mode==='bond'){t.bond=bondingProgress(t);r=`<div class="px" data-mc="${esc(t.id)}">$${abbr(t.mc)} MC</div><div class="bond" data-bond="${esc(t.id)}"><i style="width:${t.bond*.4}px"></i>${t.bond.toFixed(1)}%</div>`;
+if(mode==='bond'){t.bond=bondingProgress(t);r=`<div class="px" data-mc="${esc(t.id)}">$${abbr(t.mc)} MC</div><div class="bond" data-bond="${esc(t.id)}"><i style="width:${t.bond*.4}px"></i>${t.bond.toFixed(1)}%</div>`;}
 else if(mode==='grad')r=`<div class="px" data-mc="${esc(t.id)}">$${abbr(t.mc)} MC</div><div class="ch ${c}" data-c="${esc(t.id)}">${pct(t.chg)}</div>`;
 else r=`<div class="px" data-p="${esc(t.id)}">${fmtP(t.p)}</div><div class="ch ${c}" data-c="${esc(t.id)}">${pct(t.chg)}</div>`;
 const sub=mode==='grad'||mode==='bond'?`$${abbr(t.vol)} Vol`:t.kind==='perp'?`$${abbr(t.vol)} Vol`:`<span data-mc="${esc(t.id)}">$${abbr(t.mc)} MC</span>`;
