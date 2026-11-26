@@ -67,6 +67,9 @@ S.marketPools=S.marketPools||{};
 ALL.filter(t=>t.kind==='token').forEach(t=>marketPool(t));
 S.thesis=S.thesis||{};S.qt=S.qt||{buy:[1,5,25],sell:[25,50,100],auto:false,slip:15};S.pos.forEach(p=>{if(p.kind==='token'&&!p.entryMC)p.entryMC=p.id==='peldier'?95700:p.id==='EvilGPT'?2100:(DB[p.id]?DB[p.id].mc*p.invested/Math.max(p.qty*DB[p.id].p,1e-9):1)});
 let saveT;const save=()=>{clearTimeout(saveT);saveT=setTimeout(()=>{try{const c={...S,user:{...S.user}};localStorage.setItem(KEY,JSON.stringify(c))}catch(e){}},100)};
+S.graduatedTokens=S.graduatedTokens||[];
+function isGraduated(t){return !!(t&&(t.graduated||S.graduatedTokens.includes(t.id)));}
+function graduateToken(t){if(!t||t.kind!=='token'||isGraduated(t))return false;t.graduated=true;t.bond=100;if(!S.graduatedTokens.includes(t.id))S.graduatedTokens.push(t.id);save();return true;}
 const uid=()=>Math.random().toString(36).slice(2,9);
 const UI={hTab:'tokens',hChip:'crypto',sTab:'all',sq:'',fFol:false,fHidden:['Liquidated'],lbTab:'traders',lbR:'24h',pRange:'24h',pState:'open',pFilter:'all',pSort:'recent',pShowHidden:false,pQ:'',pSearch:false,rwR:'7d',rwH:'earn',recap:false,tr:null,openFaq:-1};
 /* ---------- trading core ---------- */
@@ -96,6 +99,7 @@ function syncMarket(t,p){
   t.mc=t.mc0*(t.p/t.p0);
   t.chg=(t.p/t.base-1)*100;
   t.h.push(t.p);if(t.h.length>90)t.h.shift();
+  if(t.bond!=null&&t.bond>=100)graduateToken(t);
 }
 function buyToken(id,amt){
   const t=DB[id];if(!t||t.kind!=='token')return 'Token not found.';
@@ -166,7 +170,7 @@ return `<div class="row" data-act="token" data-id="${esc(t.id)}">${ico(t,40)}<di
 const TOPT=[['YetzerHaraTrap',142639.02],['0xForgivable',69206.38],['Aurelius',59014.06],['Killer',48220.11],['kv4rl',41871.5]];
 function pgHome(){const tab=UI.hTab,chip=UI.hChip;
 let list='';
-if(tab==='tokens'){const ids=LISTS[chip];list=(chip==='crypto'?`<div class="banner">${I('bolt',16)}<span><b>Lowest fees</b> on blue chip tokens, anywhere.</span></div>`:chip==='comm'?`<div class="banner">${I('info',16)}<span><b style="color:#fff">Tokens with identified teams</b><br>Each of these tokens has a verified team wallet.</span></div>`:'')+ids.map(id=>tokRow(DB[id],chip==='grad'?'grad':chip==='bond'?'bond':'')).join('')}
+if(tab==='tokens'){const ids=chip==='grad'?[...new Set([...LISTS.grad,...S.graduatedTokens])].filter(id=>DB[id]):chip==='bond'?LISTS.bond.filter(id=>DB[id]&&!isGraduated(DB[id])):LISTS[chip];list=(chip==='crypto'?`<div class="banner">${I('bolt',16)}<span><b>Lowest fees</b> on blue chip tokens, anywhere.</span></div>`:chip==='comm'?`<div class="banner">${I('info',16)}<span><b style="color:#fff">Tokens with identified teams</b><br>Each of these tokens has a verified team wallet.</span></div>`:'')+ids.map(id=>tokRow(DB[id],chip==='grad'?'grad':chip==='bond'?'bond':'')).join('')}
 else if(tab==='perps')list=ALL.filter(t=>t.kind==='perp').map(t=>tokRow(t)).join('');
 else list=S.watch.length?S.watch.map(id=>tokRow(DB[id])).join(''):emptyBox('Your watchlist is empty.<br>Open any token and tap the star to add it.');
 return `<div class="page"><div class="topbar"><img class="lg" src="${IMG.LOGO}" alt="${BRAND}"><button class="ibtn" data-act="bell" aria-label="Notifications">${I('bell',22)}${S.notifs.some(n=>n.u)?`<span class="dot">${S.notifs.filter(n=>n.u).length}</span>`:''}</button></div>
