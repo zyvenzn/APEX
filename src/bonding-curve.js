@@ -244,16 +244,52 @@
     if (!pool || pool.status !== 'ACTIVE') throw new Error('AMM pool is not active');
     pool.baseReserve = quote.nextBaseReserve;
     pool.quoteReserve = quote.nextQuoteReserve;
-    pool.volume24h += quote.side === 'BUY' ? quote.amountQuote : quote.amountQuote;
+    pool.volume24h += quote.amountQuote;
     pool.feesCollected += quote.fee;
     pool.trades += 1;
     pool.updatedAt = Date.now();
     return { ...quote, marketCapAfter: (pool.quoteReserve / pool.baseReserve) * pool.circulatingSupply };
   }
 
+  function executeAmmBuy(pool, account, amountQuote, maxImpact = 1) {
+    if (!account || !Number.isFinite(account.cash) || account.cash + EPS < amountQuote) throw new Error('Insufficient cash');
+    const q = quoteAmmBuy(pool, amountQuote);
+    checkImpact(q, maxImpact);
+    const old = account.positions?.[pool.id] || { quantity: 0, costBasis: 0, realizedPnl: 0 };
+    if (![old.quantity, old.costBasis].every(Number.isFinite) || old.quantity < 0 || old.costBasis < 0) throw new Error('Invalid account position');
+    const nextPosition = { quantity: old.quantity + q.amountBase, costBasis: old.costBasis + amountQuote, realizedPnl: old.realizedPnl || 0 };
+    applyAmmQuote(pool, q);
+    account.cash -= amountQuote;
+    account.positions = account.positions || {};
+    account.positions[pool.id] = nextPosition;
+    return { ...q, position: clone(nextPosition), cashAfter: account.cash,
+      marketCapAfter: (pool.quoteReserve / pool.baseReserve) * pool.circulatingSupply };
+  }
+
+  function executeAmmSell(pool, account, amountBase, maxImpact = 1) {
+    const old = account?.positions?.[pool.id];
+    if (!old || !Number.isFinite(old.quantity) || !Number.isFinite(old.costBasis) || old.quantity + EPS < amountBase || amountBase <= 0) {
+      throw new Error('Insufficient token balance');
+    }
+    const q = quoteAmmSell(pool, amountBase);
+    checkImpact(q, maxImpact);
+    const fraction = amountBase / old.quantity;
+    const allocatedCost = old.costBasis * fraction;
+    const nextPosition = { quantity: Math.max(0, old.quantity - amountBase),
+      costBasis: Math.max(0, old.costBasis - allocatedCost),
+      realizedPnl: (old.realizedPnl || 0) + q.amountQuote - allocatedCost };
+    applyAmmQuote(pool, q);
+    account.cash += q.amountQuote;
+    if (nextPosition.quantity <= EPS) delete account.positions[pool.id];
+    else account.positions[pool.id] = nextPosition;
+    return { ...q, allocatedCost, realizedPnl: q.amountQuote - allocatedCost,
+      position: clone(nextPosition), cashAfter: account.cash,
+      marketCapAfter: (pool.quoteReserve / pool.baseReserve) * pool.circulatingSupply };
+  }
+
   return {
     DEFAULT_GRADUATION_MC_USD, createMarket, price, marketCap, invariant, progress,
     quoteBuy, quoteSell, executeBuy, executeSell, graduate,
-    quoteAmmBuy, quoteAmmSell, applyAmmQuote
+    quoteAmmBuy, quoteAmmSell, applyAmmQuote, executeAmmBuy, executeAmmSell
   };
 });
