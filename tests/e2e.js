@@ -1,0 +1,154 @@
+// Browser tests (needs Playwright):  node tests/e2e.js
+// Set CHROME_PATH to use a locally installed Chrome.
+const { chromium } = require('playwright');
+const path = require('path'), assert = require('assert'), { pathToFileURL } = require('url');
+const URL_ = pathToFileURL(path.join(__dirname, '..', 'index.html')).href;
+const KEY = 'apex-demo-v1';
+
+(async () => {
+  const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.route(/^https?:/, r => r.abort());
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(URL_);
+
+  const wait = ms => page.waitForTimeout(ms);
+  const ev = (f, a) => page.evaluate(f, a);
+  const state = async () => { await wait(200); return ev(k => JSON.parse(localStorage.getItem(k)), KEY); };
+  const go = async h => { await ev(h => __apex.go(h), h); await wait(80); };
+  const act = (n, d = {}) => ev(([n, d]) => __apex.ACT[n]({ dataset: d, classList: { toggle() {} } }, { stopPropagation() {} }), [n, d]);
+  const fresh = async () => {
+    await page.goto(URL_); await ev(() => __apex.ACT.doDelete()); await wait(500);
+  };
+  const deposit = async a => {
+    await act('deposit'); await page.click('[data-act="depAmt"]');
+    await page.fill('#amtin', a); await page.click('[data-act="doDeposit"]'); await wait(150);
+  };
+  const toPerps = async a => {
+    await act('transferSheet'); await page.fill('#amtin', a); await page.click('[data-act="doTransfer"]'); await wait(150);
+  };
+  const openLong = async (margin, lev) => {
+    await go('token/p%3ABTC'); await page.click('[data-act="tBuy"]');
+    await ev(l => { const r = document.querySelector('#lev'); r.value = l; r.dispatchEvent(new Event('input', { bubbles: true })); }, lev);
+    await page.fill('#tamt', margin); await page.click('[data-act="texec"]'); await act('closeSheet'); await wait(150);
+  };
+  const near = (a, b, tol = 0.01) => assert.ok(Math.abs(a - b) <= tol, `${a} != ${b}`);
+
+  let failed = 0;
+  const test = async (name, fn) => {
+    try { await fresh(); await fn(); console.log('ok  ', name); }
+    catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); }
+  };
+
+  await test('every page and market renders', async () => {
+    const ids = await ev(() => Object.keys(__apex.DB));
+    for (const h of ['home', 'search', 'feed', 'leaderboard', 'profile', 'rewards', 'settings', 'settings/profile', 'settings/help', ...ids.map(i => 'token/' + encodeURIComponent(i))]) await ev(h => __apex.go(h), h);
+    await wait(200); assert.deepStrictEqual(errors, []);
+  });
+  await test('decimal comma and thousands separator', async () => {
+    await deposit('1,5'); await deposit('1,500');
+    const s = await state(); near(s.cash.tokens, 1501.5);
+  });
+  await test('non-finite amount is rejected', async () => {
+    await deposit('1e309'); assert.strictEqual((await state())?.xfer?.length || 0, 0);
+  });
+  await test('prices survive reload', async () => {
+    await ev(() => { __apex.DB.SOL.p *= 2; }); const a = await ev(() => __apex.DB.SOL.p);
+    await page.reload(); near(await ev(() => __apex.DB.SOL.p) / a, 1);
+  });
+  await test('reload does not liquidate a perp', async () => {
+    await deposit('100'); await toPerps('100'); await ev(() => { __apex.DB['p:BTC'].p *= 1.03; });
+    await openLong('50', 40); await page.reload(); await wait(1800);
+    assert.strictEqual((await state()).pos.find(p => p.kind === 'perp').open, true);
+  });
+  await test('spot fee and price impact', async () => {
+    await deposit('2000'); await go('token/BASKET');
+    const before = await ev(() => ({ p: __apex.DB.BASKET.p, d: Math.max(__apex.DB.BASKET.mc0 * 0.05, 2000) * Math.sqrt(__apex.DB.BASKET.p / __apex.DB.BASKET.p0) }));
+    await ev(() => __apex.ACT.qtBuy({ dataset: { v: '1000' } }));
+    const after = await ev(() => __apex.DB.BASKET.p), s = await state(), pos = s.pos.find(p => p.id === 'BASKET');
+    const impact = 995 / before.d;
+    near(pos.qty * before.p * (1 + impact), 995, 0.5);
+    near(after / before.p, (1 + impact) ** 2, 0.004);
+  });
+  await test('buy above the slippage limit is blocked', async () => {
+    await deposit('5000'); await go('token/JOE'); await act('qtBuy', { v: '2000' });
+    assert.ok(!(await state()).pos.some(p => p.id === 'JOE'));
+  });
+  await test('round trip cannot make money', async () => {
+    await deposit('1000'); await go('token/BASKET');
+    await ev(() => { __apex.ACT.qtBuy({ dataset: { v: '1000' } }); __apex.ACT.qtSell({ dataset: { v: '100' } }); });
+    const c = (await state()).cash.tokens; assert.ok(c < 1000 && c > 985, String(c));
+  });
+  await test('closed percentage after partial sells', async () => {
+    await deposit('100'); await go('token/SOL'); await act('qtBuy', { v: '100' });
+    await ev(() => { __apex.DB.SOL.p *= 2; }); await act('qtSell', { v: '50' });
+    await ev(() => { __apex.DB.SOL.p *= 0.5; }); await act('qtSell', { v: '100' });
+    const c = (await state()).closed[0]; near(c.pct, c.pnl, 0.05); assert.ok(c.pct > 40);
+  });
+  await test('perp liquidates at maintenance margin', async () => {
+    await deposit('100'); await toPerps('100'); await openLong('50', 40);
+    await ev(() => { const t = __apex.DB['p:BTC']; t.p = __apex.S.pos.find(p => p.kind === 'perp').entry * (1 - 0.0115); });
+    await wait(50);
+    await ev(() => { const t = __apex.DB['p:BTC']; t.vola = 0; });
+    await wait(1700); assert.strictEqual((await state()).pos.find(p => p.kind === 'perp').open, true);
+    await ev(() => { __apex.DB['p:BTC'].p = __apex.S.pos.find(p => p.kind === 'perp').entry * (1 - 0.0130); });
+    await wait(1700); const s = await state();
+    assert.strictEqual(s.pos.find(p => p.kind === 'perp').open, false); near(s.closed[0].pnl, -51);
+  });
+  for (const [field, move, label] of [['#tpin', 1.02, 'take profit'], ['#slin', 0.99, 'stop loss']]) {
+    await test(label + ' closes the position', async () => {
+      await deposit('100'); await toPerps('100'); await openLong('50', 10);
+      await ev(() => { __apex.DB['p:BTC'].vola = 0; });
+      const entry = (await state()).pos.find(p => p.kind === 'perp').entry;
+      await page.click('[data-act="tpsl"]'); await page.fill(field, (entry * (1 + (move - 1) / 2)).toFixed(2));
+      await page.click('[data-act="saveTpsl"]');
+      await ev(m => { __apex.DB['p:BTC'].p *= m; }, move); await wait(1700);
+      assert.strictEqual((await state()).pos.find(p => p.kind === 'perp').open, false);
+    });
+  }
+  await test('send to unknown user is rejected', async () => {
+    await deposit('10'); await act('sendSheet'); await page.fill('#sendto', 'nobody here');
+    await page.fill('#amtin', '5'); await page.click('[data-act="doSend"]');
+    near((await state()).cash.tokens, 10);
+  });
+  await test('trader PnL matches leaderboard', async () => {
+    await go('leaderboard'); await page.locator('.list .row').first().click();
+    assert.ok((await page.textContent('#sb')).includes('398,738.66'));
+  });
+  await test('flip buy and sell applies to token page', async () => {
+    await act('tog', { k: 'st.flip' }); await go('token/SOL');
+    assert.strictEqual(await page.locator('.tbtns button').first().getAttribute('data-act'), 'tBuy');
+  });
+  await test('thesis only filters the feed', async () => {
+    await go('token/SOL'); await act('tTab', { v: 'feed' });
+    const all = await page.locator('.tokpg .fi').count(); await page.click('[data-act="tThes"]');
+    assert.ok(all > 0); assert.strictEqual(await page.locator('.tokpg .fi').count(), 0);
+  });
+  await test('language applies to navigation at once', async () => {
+    await go('settings/language'); await act('setLang', { v: 'de' });
+    assert.strictEqual(await page.locator('.navb span').first().textContent(), 'Start');
+  });
+  await test('24h PnL uses a rolling reference', async () => {
+    await state(); await act('tog', { k: 'st.haptics' }); await wait(200);
+    await ev(k => { const s = JSON.parse(localStorage.getItem(k)); s.eq = [[Date.now() - 9e7, 5], [Date.now() - 8.7e7, 7], [Date.now() - 1000, 100]]; Object.assign(__apex.S, s); }, KEY);
+    await go('home');
+    const shown = await page.locator('[data-d24]').first().textContent();
+    const total = await ev(() => __apex.S.pos.filter(p => p.open).reduce((a, p) => a + p.qty * __apex.DB[p.id].p, 0));
+    assert.ok(shown.startsWith('-$' + Math.abs(total - 7).toFixed(2)), shown);
+  });
+  await test('followed trader triggers an alert', async () => {
+    await ev(() => { __apex.S.follows.includes = () => true; __apex.S.nt.tokMin = 0; __apex.S.nt.perpMin = 0; });
+    await wait(3500); assert.ok(await ev(() => __apex.S.notifs.some(n => /: (Buy|Sell|Reduced|Opened|Closed|Liquidated) /.test(n.t))));
+  });
+  await test('delete account resets prices and state', async () => {
+    await deposit('10'); await ev(() => { __apex.DB.SOL.p *= 3; }); await wait(1700);
+    await act('doDelete'); await wait(600);
+    assert.strictEqual(await ev(() => __apex.S.cash.tokens), 0);
+    assert.ok(await ev(() => __apex.DB.SOL.p / __apex.DB.SOL.p0 < 1.5));
+  });
+
+  assert.deepStrictEqual(errors, [], 'page errors: ' + errors.join('; '));
+  await browser.close();
+  console.log(failed ? failed + ' failed' : 'all passed');
+  process.exit(failed ? 1 : 0);
+})();
