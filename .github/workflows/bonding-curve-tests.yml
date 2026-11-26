@@ -1,4 +1,4 @@
-name: Bonding Curve Tests
+name: APEX Market Engine Tests
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - feat/multichain-simulation-architecture
 
 jobs:
-  bonding-curve:
+  market-engines:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,5 +18,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run bonding curve tests
+      - name: Check application JavaScript syntax
+        run: node --check src/app.js
+      - name: Run bonding curve unit tests
         run: node --test tests/bonding-curve.test.js
+      - name: Run frontend trade router tests
+        run: node --test tests/spot-trading-router.test.js
