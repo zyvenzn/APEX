@@ -1,0 +1,22 @@
+name: Bonding Curve Tests
+
+on:
+  push:
+    branches:
+      - feat/bonding-curve-graduation-v1
+  pull_request:
+    branches:
+      - feat/multichain-simulation-architecture
+
+jobs:
+  bonding-curve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run bonding curve tests
+        run: node --test tests/bonding-curve.test.js
