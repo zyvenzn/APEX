@@ -5,7 +5,7 @@ const Curve = require('../src/bonding-curve');
 function market(overrides = {}) {
   return Curve.createMarket({
     id: 'TEST', baseReserve: 1_000_000, quoteReserve: 10_000,
-    circulatingSupply: 10_000_000, feeBps: 100,
+    circulatingSupply: 1_000_000, feeBps: 100,
     graduationTargetUsd: 69_000, ...overrides
   });
 }
@@ -76,7 +76,7 @@ test('graduation happens at threshold and migrates exact reserves', () => {
   const m = market({ baseReserve: 1_000, quoteReserve: 1, circulatingSupply: 10_000_000 });
   // At initial price 0.001, MC is $10K. A large buy crosses the $69K target.
   const account = { cash: 100_000, positions: {} };
-  const result = Curve.executeBuy(m, account, 10_000, 1);
+  const result = Curve.executeBuy(m, account, 100, 1);
   assert.equal(m.status, 'GRADUATED');
   assert.equal(result.graduation.status, 'COMPLETED');
   assert.equal(m.ammPool.status, 'ACTIVE');
@@ -98,7 +98,7 @@ test('graduation is idempotent and old curve is permanently closed', () => {
 
 test('graduated AMM continues to quote swaps', () => {
   const m = market({ baseReserve: 1_000, quoteReserve: 1, circulatingSupply: 10_000_000 });
-  Curve.executeBuy(m, { cash: 100_000, positions: {} }, 10_000, 1);
+  Curve.executeBuy(m, { cash: 100_000, positions: {} }, 100, 1);
   const pool = m.ammPool;
   const account = { cash: 100, positions: {} };
   const before = pool.quoteReserve / pool.baseReserve;
