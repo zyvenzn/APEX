@@ -170,6 +170,18 @@ const KEY = 'apex-demo-v1';
     const a = await n(); await page.click('[data-act="follow"]'); await wait(100); assert.strictEqual(await n(), a + 1);
     await page.click('[data-act="follow"]'); await wait(100); assert.strictEqual(await n(), a);
   });
+  await test('token transactions are never negative, change with time frame and move live', async () => {
+    await go('token/VEXDIAL'); await act('tTab', { v: 'about' });
+    assert.ok(!/-\d|\$-/.test(await page.locator('#abTx').textContent()));
+    await go('token/SOL'); await act('tTab', { v: 'about' });
+    const txt = () => page.locator('#abTx').textContent();
+    const t1 = await txt(); assert.ok(!/-\d|\$-/.test(t1), t1);
+    const nums = s => (s.match(/\d+/g) || []).join(',');
+    await page.click('[data-act="abTf"][data-v="1D"]'); const d1 = await txt(); await page.click('[data-act="abTf"][data-v="5M"]'); const m5 = await txt();
+    assert.notStrictEqual(nums(d1), nums(m5));
+    await page.click('[data-act="abTf"][data-v="1D"]'); const a = await txt(); await wait(5000); assert.notStrictEqual(await txt(), a);
+    await go('token/peldier'); await act('tTab', { v: 'about' }); assert.ok(/^0 buys0 sells/.test(await txt()));
+  });
   await test('delete account resets prices and state', async () => {
     await deposit('10'); await ev(() => { __apex.DB.SOL.p *= 3; }); await wait(1700);
     await act('doDelete'); await wait(600);
