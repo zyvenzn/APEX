@@ -239,6 +239,31 @@ const KEY = 'apex-demo-v1';
     assert.ok(await ev(() => __apex.DB.SOL.p / __apex.DB.SOL.p0 < 1.5));
   });
 
+  await test('bonding progress is market-cap based and graduates at $69K', async () => {
+    const initial = await ev(() => ({ target: __apex.market.graduationTarget, p: __apex.market.progress('VEXDIAL') }));
+    assert.strictEqual(initial.target, 69000); assert.ok(initial.p > 0 && initial.p < 100);
+    await ev(() => { const t=__apex.DB.VEXDIAL; t.p=t.p0*(69000/t.mc0); t.mc=69000; __apex.market.reconcile(); });
+    assert.strictEqual(await ev(() => __apex.market.isBonding('VEXDIAL')), false);
+    assert.strictEqual(await ev(() => __apex.market.isGraduated('VEXDIAL')), true);
+    await ev(() => { __apex.DB.VEXDIAL.mc=12000; __apex.market.reconcile(); });
+    assert.strictEqual(await ev(() => __apex.market.isGraduated('VEXDIAL')), true);
+    await page.reload(); await wait(100);
+    assert.strictEqual(await ev(() => __apex.market.isGraduated('VEXDIAL')), true);
+  });
+  await test('aggregated NPC flow changes prices and records volume', async () => {
+    const before=await ev(() => Object.fromEntries(Object.values(__apex.DB).filter(t=>t.kind==='token'&&!t.dead).map(t=>[t.id,[t.p,t.vol]])));
+    const flow=await ev(() => __apex.market.flow(180));
+    const after=await ev(() => Object.fromEntries(Object.values(__apex.DB).filter(t=>t.kind==='token'&&!t.dead).map(t=>[t.id,[t.p,t.vol]])));
+    const moved=Object.keys(before).some(id=>before[id][0]!==after[id][0]&&after[id][1]>before[id][1]);
+    assert.strictEqual(flow.population,1000000); assert.ok(flow.orders>0&&flow.volume>0); assert.ok(moved);
+  });
+  await test('top holders come from the ledger and are capped at ten', async () => {
+    await ev(() => __apex.market.flow(240));
+    const hs=await ev(() => __apex.market.holders('VEXDIAL'));
+    assert.ok(hs.length>0); assert.ok(hs.length<=10);
+    for(let i=1;i<hs.length;i++)assert.ok(hs[i-1].qty>=hs[i].qty);
+    assert.ok(hs.every(h=>Number.isFinite(h.qty)&&Number.isFinite(h.pc)&&Number.isFinite(h.pnl)));
+  });
   assert.deepStrictEqual(errors, [], 'page errors: ' + errors.join('; '));
   await browser.close();
   console.log(failed ? failed + ' failed' : 'all passed');
