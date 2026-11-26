@@ -165,6 +165,11 @@ const KEY = 'apex-demo-v1';
     await ev(() => { __apex.S.follows.includes = () => true; __apex.S.nt.tokMin = 0; __apex.S.nt.perpMin = 0; });
     await wait(3500); assert.ok(await ev(() => __apex.S.notifs.some(n => /: (Buy|Sell|Reduced|Opened|Closed|Liquidated) /.test(n.t))));
   });
+  await test('following a trader updates their follower count', async () => {
+    await go('trader/kv4rl'); const n = async () => +(await page.locator('[data-fc="kv4rl"]').first().textContent()).replace(/,/g, '');
+    const a = await n(); await page.click('[data-act="follow"]'); await wait(100); assert.strictEqual(await n(), a + 1);
+    await page.click('[data-act="follow"]'); await wait(100); assert.strictEqual(await n(), a);
+  });
   await test('delete account resets prices and state', async () => {
     await deposit('10'); await ev(() => { __apex.DB.SOL.p *= 3; }); await wait(1700);
     await act('doDelete'); await wait(600);
