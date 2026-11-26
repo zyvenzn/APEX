@@ -16,9 +16,19 @@
     return n;
   };
   const clone = value => JSON.parse(JSON.stringify(value));
-  const price = market => market.quoteReserve / market.baseReserve;
+  // Once graduated, the AMM pool becomes the live source of price and reserves.
+  // The curve reserve fields remain as an immutable migration snapshot.
+  const activeReserves = market => market?.status === 'GRADUATED' && market.ammPool
+    ? market.ammPool : market;
+  const price = market => {
+    const reserves = activeReserves(market);
+    return reserves.quoteReserve / reserves.baseReserve;
+  };
   const marketCap = market => price(market) * market.circulatingSupply;
-  const invariant = market => market.baseReserve * market.quoteReserve;
+  const invariant = market => {
+    const reserves = activeReserves(market);
+    return reserves.baseReserve * reserves.quoteReserve;
+  };
 
   function createMarket(config) {
     if (!config || typeof config !== 'object') throw new Error('config is required');
