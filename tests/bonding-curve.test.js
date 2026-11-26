@@ -102,11 +102,11 @@ test('graduated AMM continues to quote swaps', () => {
   const pool = m.ammPool;
   const account = { cash: 100, positions: {} };
   const before = pool.quoteReserve / pool.baseReserve;
-  const buy = Curve.executeAmmBuy(pool, account, 10, 1);
+  const buy = Curve.executeAmmBuy(pool, account, 10, 100);
   assert.ok(buy.amountBase > 0);
   assert.ok(pool.quoteReserve / pool.baseReserve > before);
   assert.equal(account.cash, 90);
-  const sell = Curve.executeAmmSell(pool, account, buy.amountBase / 2, 1);
+  const sell = Curve.executeAmmSell(pool, account, buy.amountBase / 2, 100);
   assert.ok(sell.amountQuote > 0);
   assert.ok(account.cash > 90);
   assert.ok(account.positions.TEST.quantity > 0);
