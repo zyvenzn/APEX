@@ -114,7 +114,7 @@ async function main() {
 
     const assertPoolReconciles = async (label: string) => {
       const state = await db.query(
-        \`SELECT m.base_reserve::text AS base_reserve, m.quote_reserve::text AS quote_reserve,
+        `SELECT m.base_reserve::text AS base_reserve, m.quote_reserve::text AS quote_reserve,
           (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
             JOIN ledger_entries e ON e.account_id = a.id
            WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_POOL:' || m.market_id
@@ -127,7 +127,7 @@ async function main() {
             JOIN ledger_entries e ON e.account_id = a.id
            WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_FEE_REVENUE:' || m.market_id
              AND a.asset_code = m.quote_asset_code) AS fee_ledger_minor
-         FROM spot_markets m WHERE m.market_id = 'apex-demo'\`
+         FROM spot_markets m WHERE m.market_id = 'apex-demo'`
       );
       const row = state.rows[0];
       if (!row || row.base_reserve !== row.base_ledger_reserve || row.quote_reserve !== row.quote_ledger_reserve) {
@@ -146,7 +146,7 @@ async function main() {
     }
 
     const legacyClearing = await db.query(
-      \`SELECT id FROM ledger_accounts WHERE owner_user_id IS NULL AND account_code = 'SPOT_CLEARING'\`
+      `SELECT id FROM ledger_accounts WHERE owner_user_id IS NULL AND account_code = 'SPOT_CLEARING'`
     );
     if (legacyClearing.rows.length !== 0) throw new Error('Legacy SPOT_CLEARING accounts were created.');
 
