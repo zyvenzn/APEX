@@ -145,6 +145,23 @@ async function main() {
     if (BigInt(afterSell.fee_ledger_minor) !== expectedFees) {
       throw new Error('BUY/SELL fee totals do not reconcile to fee revenue ledger.');
     }
+    const distinctConcurrentBuys = await Promise.all([
+      app.inject({ method: 'POST', url: '/v1/spot/trades', headers: { cookie, 'idempotency-key': 'phase03-concurrent-buy-a' },
+        payload: { marketId: 'apex-demo', side: 'BUY', amountMinor: '1000', maxSlippageBps: 5000 } }),
+      app.inject({ method: 'POST', url: '/v1/spot/trades', headers: { cookie, 'idempotency-key': 'phase03-concurrent-buy-b' },
+        payload: { marketId: 'apex-demo', side: 'BUY', amountMinor: '2000', maxSlippageBps: 5000 } })
+    ]);
+    if (distinctConcurrentBuys.some(result => result.statusCode !== 201)) {
+      throw new Error('Concurrent distinct spot trades failed: ' + distinctConcurrentBuys.map(result => result.statusCode).join(','));
+    }
+    if (distinctConcurrentBuys[0].json().tradeId === distinctConcurrentBuys[1].json().tradeId) {
+      throw new Error('Distinct concurrent spot orders were incorrectly deduplicated.');
+    }
+    const afterConcurrent = await assertPoolReconciles('After concurrent BUYs');
+    const concurrentFees = distinctConcurrentBuys.reduce((sum, result) => sum + BigInt(result.json().feeMinor), 0n);
+    if (BigInt(afterConcurrent.fee_ledger_minor) !== expectedFees + concurrentFees) {
+      throw new Error('Concurrent BUY fees do not reconcile to fee revenue ledger.');
+    }
 
     const legacyClearing = await db.query(
       `SELECT id FROM ledger_accounts WHERE owner_user_id IS NULL AND account_code = 'SPOT_CLEARING'`
