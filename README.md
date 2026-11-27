@@ -68,7 +68,7 @@ The API listens on `http://localhost:3001` by default.
 ### API surface
 
 - `GET /v1/health/live` — process liveness.
-- `GET /v1/health/ready` — PostgreSQL and Redis readiness.
+- `GET /v1/health/ready` — PostgreSQL readiness.
 - `POST /v1/auth/register` — create an account and session.
 - `POST /v1/auth/login` — authenticate and issue an opaque session cookie.
 - `GET /v1/auth/me` — return the current authenticated identity.
@@ -147,7 +147,7 @@ The frontend now contains a dedicated backend Spot panel for the seeded `apex-de
 
 ### Connect the frontend
 
-1. Deploy the Fastify API and its PostgreSQL + Redis dependencies separately.
+1. Deploy the Fastify API and its PostgreSQL dependency separately.
 2. Set the API's `APP_ORIGIN` to the exact deployed frontend origin (no wildcard) and set `COOKIE_SECURE=true` in production.
 3. Configure the API origin from the frontend's **Backend Spot → Configure API** panel, for example `https://your-api.example.com`.
 4. Create an APEX backend account or sign in. Browser requests use credentialed cookies.
@@ -160,19 +160,19 @@ For production cross-origin cookies, the API sets `SameSite=None; Secure`. Some 
 ### Staging safety and export
 Treat a free Render PostgreSQL instance as disposable test infrastructure, not durable storage. Before its expiry or any reset, export it from a trusted machine with PostgreSQL client tools:
 
-\`\`\`sh
+```sh
 pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl --file="apex-staging-$(date -u +%Y%m%dT%H%M%SZ).dump"
-\`\`\`
+```
 
 Restore into a separate target database only after checking the destination:
 
-\`\`\`sh
+```sh
 pg_restore --dbname "$TARGET_DATABASE_URL" --clean --if-exists --no-owner --no-acl --single-transaction apex-staging-backup.dump
-\`\`\`
+```
 
 Do not place database URLs or dumps in Git. Keep the staging API to one instance: current Fastify rate limits use process memory and are not shared across replicas. Redis is intentionally absent because no current application path needs it; introduce a shared limiter only before scaling beyond one instance.
 
-The audit branch includes a lockfile-refresh workflow. It regenerates \`package-lock.json\` from the pinned manifest, then verifies \`npm ci\` and runs the full validation suite.
+The audit branch includes a lockfile-refresh workflow. It regenerates `package-lock.json` from the pinned manifest, then verifies `npm ci` and runs the full validation suite.
 
 
 All orders remain simulated. No wallet signing, real deposits, blockchain transactions, or external DEX writes are performed. The frontend refreshes market snapshots by HTTP polling; the existing WebSocket endpoint does not yet publish market broadcasts.
