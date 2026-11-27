@@ -18,6 +18,7 @@ on:
       - feat/phase-02-simulation-ledger
       - feat/phase-03-spot-market-engine
       - feat/phase-03-frontend-ledger-integration
+      - fix/pre-staging-audit-reconciliation-security
   workflow_dispatch:
 
 permissions:
