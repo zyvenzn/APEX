@@ -62,6 +62,15 @@ async function main() {
     const history = await app.inject({ method: 'GET', url: '/v1/ledger/journals', headers: { cookie } });
     if (history.statusCode !== 200 || history.json().journals.length !== 1) throw new Error('Ledger journal history is incorrect');
 
+    const eventPage = await app.inject({ method: 'GET', url: '/v1/ledger/events?after=0&limit=10', headers: { cookie } });
+    if (eventPage.statusCode !== 200 || eventPage.json().events.length !== 1) throw new Error('Ledger event replay page is incorrect');
+    if (eventPage.json().events[0].eventType !== 'starter_credit_granted') throw new Error('Unexpected ledger replay event type');
+    const eventTail = await app.inject({
+      method: 'GET', url: '/v1/ledger/events?after=' + eventPage.json().nextAfter,
+      headers: { cookie }
+    });
+    if (eventTail.statusCode !== 200 || eventTail.json().events.length !== 0) throw new Error('Ledger event cursor did not advance');
+
     const journalId = claimBodies[0].journalId;
     const entries = await db.query(
       'SELECT amount_minor::text AS amount_minor FROM ledger_entries WHERE journal_id = $1 ORDER BY id',
