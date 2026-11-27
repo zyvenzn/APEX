@@ -123,6 +123,12 @@ async function main() {
       throw new Error('Spot sell allowed a negative base balance: ' + noTokens.statusCode + ' ' + noTokens.body);
     }
 
+    const immutableTradeAttempt = await db.query(
+      'UPDATE spot_trades SET amount_minor = amount_minor WHERE id = $1',
+      [buyBodies[0].tradeId]
+    ).then(() => false, error => (error as { code?: string }).code === '55000');
+    if (!immutableTradeAttempt) throw new Error('Spot trade records are not immutable.');
+
     const tradeJournalRows = await db.query(
       `SELECT j.id, j.asset_code, COALESCE(SUM(e.amount_minor), 0)::text AS total
          FROM ledger_journals j JOIN ledger_entries e ON e.journal_id = j.id
