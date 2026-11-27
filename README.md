@@ -82,9 +82,11 @@ Passwords are hashed with Node.js scrypt. Session tokens are random opaque value
 ```sh
 npm run build:api
 npm run test:api
+npm run migrate
+npm run test:api:integration
 ```
 
-The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them.
+The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them. The integration smoke test expects the PostgreSQL and Redis services from Docker Compose to be running.
 
 ### Current Phase 01 boundary
 
