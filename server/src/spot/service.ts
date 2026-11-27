@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 
 const MAX_AMOUNT = 9_000_000_000_000_000_000n;
@@ -127,7 +127,11 @@ export async function executeSpotTrade(
     if (market.status !== 'ACTIVE') throw new SpotMarketPausedError('Market is not active.');
 
     const prior = await client.query(
-      'SELECT id, request_hash, result FROM spot_trades WHERE user_id = $1 AND idempotency_key = $2',
+      \`SELECT t.id, t.request_hash, e.payload AS result
+         FROM spot_trades t JOIN ledger_events e
+           ON e.user_id = t.user_id AND e.event_type = 'spot_trade_executed'
+          AND e.payload->>'tradeId' = t.id::text
+        WHERE t.user_id = $1 AND t.idempotency_key = $2\`,
       [userId, idempotencyKey]
     );
     if (prior.rows[0]) {
@@ -212,7 +216,6 @@ export async function executeSpotTrade(
       journalIds, simulated: true, replayed: false,
       note: 'Simulated trade only. No blockchain transaction or external DEX data was changed.'
     };
-    await client.query('UPDATE spot_trades SET result = $2::jsonb WHERE id = $1', [tradeId, JSON.stringify(result)]);
     await client.query(
       `INSERT INTO ledger_events (journal_id, user_id, event_type, payload)
        VALUES ($1, $2, 'spot_trade_executed', $3::jsonb)`,
