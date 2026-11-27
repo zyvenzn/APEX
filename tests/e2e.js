@@ -131,7 +131,9 @@ const KEY = 'apex-demo-v1';
   const openTrader = async () => {
     await go('leaderboard');
     const row = page.locator('.list .row[data-act="trader"]').first();
-    return { row, name: await row.getAttribute('data-h') };
+    const name = await row.getAttribute('data-h');
+    await row.click();
+    return { row, name };
   };
   await test('trader preview opens full profile', async () => {
     const { name } = await openTrader();
