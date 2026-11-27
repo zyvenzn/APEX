@@ -84,6 +84,7 @@ npm run build:api
 npm run test:api
 npm run migrate
 npm run test:api:integration
+npm run test:api:browser
 ```
 
 The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them. The integration smoke test expects the PostgreSQL service from Docker Compose to be running.
@@ -134,7 +135,7 @@ The backend spot engine is a deterministic virtual constant-product pool. It is 
 
 ### Spot API
 
-- `GET /v1/spot/markets` — simulator market list and reserve metadata.
+- `GET /v1/spot/markets` — simulator market list, pool reserve balances from the ledger, and accrued fee totals.
 - `POST /v1/spot/quote` — indicative quote; body: `{ "marketId": "apex-demo", "side": "BUY", "amountMinor": "10000", "maxSlippageBps": 1500 }`.
 - `POST /v1/spot/trades` — authenticated execution; same body plus `Idempotency-Key` header.
 
