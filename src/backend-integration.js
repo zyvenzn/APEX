@@ -5,6 +5,12 @@
 
   // The UI only exposes the backend-seeded DEMO market; prototype markets stay local.
   const CONFIG_KEY = 'apex-backend-api-base-v1';
+  const PENDING_TRADE_KEY = 'apex-pending-spot-trades-v1';
+  const pendingTradeKeys = new Map();
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PENDING_TRADE_KEY) || '{}');
+    Object.entries(saved).forEach(([fingerprint, idempotencyKey]) => pendingTradeKeys.set(fingerprint, idempotencyKey));
+  } catch (_) { /* session storage is optional; in-memory retry remains available */ }
   let apiBase = (localStorage.getItem(CONFIG_KEY) || '').replace(/\/+$/, '');
   let market = null;
   let markets = [];
@@ -20,6 +26,24 @@
   const money = value => '$' + Number(value || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const units = (minor, decimals) => Number(BigInt(minor || '0')) / Math.pow(10, decimals);
   const key = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'apex-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  function persistPendingTradeKeys() {
+    try { sessionStorage.setItem(PENDING_TRADE_KEY, JSON.stringify(Object.fromEntries(pendingTradeKeys))); }
+    catch (_) { /* in-memory map still protects retries until this page is closed */ }
+  }
+  function pendingTradeKey(payload) {
+    const fingerprint = JSON.stringify(payload);
+    let idempotencyKey = pendingTradeKeys.get(fingerprint);
+    if (!idempotencyKey) {
+      idempotencyKey = key();
+      pendingTradeKeys.set(fingerprint, idempotencyKey);
+      persistPendingTradeKeys();
+    }
+    return {fingerprint, idempotencyKey};
+  }
+  function clearPendingTradeKey(fingerprint) {
+    pendingTradeKeys.delete(fingerprint);
+    persistPendingTradeKeys();
+  }
 
   async function request(path, options = {}) {
     const headers = Object.assign({}, options.headers || {});
@@ -253,16 +277,25 @@
       busy = true;
       const button = $('[data-apex-action="execute"]');
       if (button) { button.disabled = true; button.textContent = 'Executing…'; }
+      const payload = {marketId:market.marketId,side,amountMinor,maxSlippageBps:1500};
+      const pending = pendingTradeKey(payload);
       const result = await request('/v1/spot/trades', {
         method:'POST',
-        headers:{'idempotency-key':key()},
-        body:JSON.stringify({marketId:market.marketId,side,amountMinor,maxSlippageBps:1500})
+        headers:{'idempotency-key':pending.idempotencyKey},
+        body:JSON.stringify(payload)
       });
+      clearPendingTradeKey(pending.fingerprint);
       await loadMarkets();
       await loadLedger();
       closeModal();
       toast((result.replayed ? 'Recovered' : 'Executed') + ' simulated ' + side.toLowerCase() + ' trade. Ledger updated.');
     } catch (error) {
+      // A network failure or 5xx can happen after the database commits. Keep the
+      // fingerprint -> key mapping so retrying the same order safely replays it.
+      if (error.status && error.status >= 400 && error.status < 500) {
+        const amountMinor = input ? toMinor(input.value, side === 'BUY' ? market.quoteDecimals : market.baseDecimals) : '';
+        clearPendingTradeKey(JSON.stringify({marketId:market.marketId,side,amountMinor,maxSlippageBps:1500}));
+      }
       if (error.status === 401) { user = null; authModal('login', 'Session expired. Sign in again.'); }
       else if (errorBox) errorBox.textContent = error.message;
       else toast(error.message, true);
