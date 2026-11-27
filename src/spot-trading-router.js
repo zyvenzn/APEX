@@ -21,6 +21,7 @@
       const validSaved = saved && saved.id === id &&
         ['BONDING', 'GRADUATED'].includes(saved.status) && validReserves(saved) &&
         Number.isFinite(saved.feeBps) && saved.feeBps >= 0 && saved.feeBps < 10000 &&
+        Number.isFinite(saved.graduationTargetUsd) && saved.graduationTargetUsd > 0 &&
         (saved.status !== 'GRADUATED' || (validReserves(saved.ammPool) &&
           saved.ammPool.status === 'ACTIVE' && saved.ammPool.id === id));
       if (validSaved) {
