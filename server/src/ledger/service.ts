@@ -140,3 +140,16 @@ export async function getLedgerHistory(pool: Pool, userId: string, limit = 50, o
 }
 
 export const ledgerConstants = { assetCode: ASSET_CODE, starterCreditMinor: STARTER_CREDIT_MINOR.toString(), decimals: 2 };
+
+export async function getLedgerEvents(pool: Pool, userId: string, afterSequence = 0, limit = 100) {
+  const result = await pool.query(
+    `SELECT sequence_id::text AS "sequenceId", journal_id AS "journalId",
+            event_type AS "eventType", payload, created_at AS "createdAt"
+       FROM ledger_events
+      WHERE user_id = $1 AND sequence_id > $2
+      ORDER BY sequence_id ASC
+      LIMIT $3`,
+    [userId, afterSequence, limit]
+  );
+  return result.rows;
+}
