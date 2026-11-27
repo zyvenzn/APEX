@@ -27,8 +27,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install pinned development dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install frontend and backend dependencies
+        run: npm install --no-audit --no-fund
 
       - name: Check JavaScript syntax
         run: |
@@ -49,6 +49,12 @@ jobs:
 
       - name: Run all unit tests
         run: npm test
+
+      - name: Type-check and compile backend
+        run: npm run build:api
+
+      - name: Run backend tests
+        run: npm run test:api
 
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
