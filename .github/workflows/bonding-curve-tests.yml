@@ -8,6 +8,7 @@ on:
       - feat/phase-01-backend-foundation
       - feat/phase-02-simulation-ledger
       - feat/phase-03-spot-market-engine
+      - feat/phase-03-frontend-ledger-integration
   pull_request:
     branches:
       - feat/bonding-curve-graduation-v1
@@ -15,6 +16,7 @@ on:
       - feat/phase-01-backend-foundation
       - feat/phase-02-simulation-ledger
       - feat/phase-03-spot-market-engine
+      - feat/phase-03-frontend-ledger-integration
   workflow_dispatch:
 
 permissions:
@@ -68,6 +70,7 @@ jobs:
 
       - name: Check JavaScript syntax
         run: |
+          node --check src/backend-integration.js
           node --check build.js
           node --check src/app.js
           node --check src/market-data/chain-registry.js

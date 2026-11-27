@@ -36,7 +36,7 @@ export function setSessionCookie(reply: { setCookie: (...args: any[]) => unknown
     path: '/',
     httpOnly: true,
     secure: config.COOKIE_SECURE,
-    sameSite: 'lax',
+    sameSite: config.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: config.SESSION_TTL_HOURS * 60 * 60
   });
 }
