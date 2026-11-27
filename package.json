@@ -7,9 +7,29 @@
     "build": "node build.js",
     "test": "node --test tests/*.test.js",
     "test:e2e": "node tests/e2e.js",
-    "test:all": "npm run build && npm test && npm run test:e2e"
+    "test:all": "npm run build && npm test && npm run build:api && npm run test:api && npm run test:e2e",
+    "dev:api": "tsx watch server/src/index.ts",
+    "start:api": "node server/dist/index.js",
+    "build:api": "tsc -p server/tsconfig.json",
+    "migrate": "tsx server/src/db/migrate.ts",
+    "test:api": "tsx --test server/tests/*.test.ts",
+    "test:api:integration": "tsx server/tests/integration.ts"
   },
   "devDependencies": {
-    "playwright": "1.58.2"
+    "@types/node": "22.19.1",
+    "@types/pg": "8.15.6",
+    "playwright": "1.58.2",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.0.2",
+    "@fastify/cors": "11.1.0",
+    "@fastify/rate-limit": "10.3.0",
+    "@fastify/websocket": "11.2.0",
+    "fastify": "5.6.2",
+    "ioredis": "5.8.1",
+    "pg": "8.16.3",
+    "zod": "4.1.12"
   }
 }
