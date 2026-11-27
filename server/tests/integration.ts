@@ -71,6 +71,73 @@ async function main() {
     });
     if (eventTail.statusCode !== 200 || eventTail.json().events.length !== 0) throw new Error('Ledger event cursor did not advance');
 
+
+    const marketList = await app.inject({ method: 'GET', url: '/v1/spot/markets' });
+    if (marketList.statusCode !== 200 || !marketList.json().markets.some((market: { marketId: string }) => market.marketId === 'apex-demo')) {
+      throw new Error('Demo spot market was not seeded.');
+    }
+    const buyPayload = { marketId: 'apex-demo', side: 'BUY', amountMinor: '10000', maxSlippageBps: 1500 };
+    const concurrentBuys = await Promise.all([
+      app.inject({ method: 'POST', url: '/v1/spot/trades', headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' }, payload: buyPayload }),
+      app.inject({ method: 'POST', url: '/v1/spot/trades', headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' }, payload: buyPayload })
+    ]);
+    const buyStatuses = concurrentBuys.map(result => result.statusCode).sort();
+    if (buyStatuses[0] !== 200 || buyStatuses[1] !== 201) throw new Error('Concurrent spot buy idempotency failed: ' + buyStatuses.join(','));
+    const buyBodies = concurrentBuys.map(result => result.json());
+    if (buyBodies[0].tradeId !== buyBodies[1].tradeId) throw new Error('Concurrent spot buys created multiple trades.');
+    if (buyBodies.some(body => body.simulated !== true || !body.note?.includes('No blockchain transaction'))) {
+      throw new Error('Spot trade virtual-only disclosure missing.');
+    }
+    const boughtBase = BigInt(buyBodies[0].amountOutMinor);
+    if (boughtBase <= 0n) throw new Error('Spot buy did not credit base asset.');
+    const replayWithChangedRequest = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' },
+      payload: { ...buyPayload, amountMinor: '11000' }
+    });
+    if (replayWithChangedRequest.statusCode !== 409) throw new Error('Spot idempotency key accepted a changed request.');
+
+    const sellAmount = (boughtBase / 2n).toString();
+    const sell = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-sell-001' },
+      payload: { marketId: 'apex-demo', side: 'SELL', amountMinor: sellAmount, maxSlippageBps: 1500 }
+    });
+    if (sell.statusCode !== 201) throw new Error('Spot sell failed: ' + sell.statusCode + ' ' + sell.body);
+    if (BigInt(sell.json().amountOutMinor) <= 0n) throw new Error('Spot sell returned no quote asset.');
+
+    const noFunds = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-overdraft-01' },
+      payload: { marketId: 'apex-demo', side: 'BUY', amountMinor: '999999999999', maxSlippageBps: 5000 }
+    });
+    if (noFunds.statusCode !== 409 || noFunds.json().error !== 'INSUFFICIENT_BALANCE') {
+      throw new Error('Spot buy allowed a negative quote balance: ' + noFunds.statusCode + ' ' + noFunds.body);
+    }
+    const noTokens = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-oversell-01' },
+      payload: { marketId: 'apex-demo', side: 'SELL', amountMinor: (boughtBase * 10n).toString(), maxSlippageBps: 5000 }
+    });
+    if (noTokens.statusCode !== 409 || noTokens.json().error !== 'INSUFFICIENT_BALANCE') {
+      throw new Error('Spot sell allowed a negative base balance: ' + noTokens.statusCode + ' ' + noTokens.body);
+    }
+
+    const tradeJournalRows = await db.query(
+      `SELECT j.id, j.asset_code, COALESCE(SUM(e.amount_minor), 0)::text AS total
+         FROM ledger_journals j JOIN ledger_entries e ON e.journal_id = j.id
+        WHERE j.reference_type = 'spot_trade' AND j.reference_id = $1
+        GROUP BY j.id, j.asset_code`,
+      [buyBodies[0].tradeId]
+    );
+    if (tradeJournalRows.rows.length !== 2 || tradeJournalRows.rows.some(row => row.total !== '0')) {
+      throw new Error('Spot trade did not produce two balanced single-asset journals.');
+    }
+    const replayEvents = await app.inject({ method: 'GET', url: '/v1/ledger/events?after=' + eventPage.json().nextAfter, headers: { cookie } });
+    if (replayEvents.statusCode !== 200 || !replayEvents.json().events.some((event: { eventType: string }) => event.eventType === 'spot_trade_executed')) {
+      throw new Error('Spot execution event is missing from the ledger replay stream.');
+    }
+
     const journalId = claimBodies[0].journalId;
     const entries = await db.query(
       'SELECT amount_minor::text AS amount_minor FROM ledger_entries WHERE journal_id = $1 ORDER BY id',
