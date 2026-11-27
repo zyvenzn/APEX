@@ -1812,10 +1812,13 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
         headers:{'idempotency-key':pending.idempotencyKey},
         body:JSON.stringify(payload)
       });
+      // The server has confirmed the idempotent result. Clear the pending key,
+      // refresh authoritative balances/history, then dismiss the order modal so
+      // the next action cannot read stale portfolio state.
       clearPendingTradeKey(pending.fingerprint);
+      await Promise.allSettled([loadMarkets(), loadLedger()]);
       closeModal();
       toast((result.replayed ? 'Recovered' : 'Executed') + ' simulated ' + side.toLowerCase() + ' trade. Ledger updated.');
-      await Promise.allSettled([loadMarkets(), loadLedger()]);
     } catch (error) {
       // A network failure or 5xx can happen after the database commits. Keep the
       // fingerprint -> key mapping so retrying the same order safely replays it.
