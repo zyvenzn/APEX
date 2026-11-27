@@ -88,29 +88,6 @@ async function main() {
     }
     const boughtBase = BigInt(buyBodies[0].amountOutMinor);
     if (boughtBase <= 0n) throw new Error('Spot buy did not credit base asset.');
-    const repeatedBuy = await app.inject({
-      method: 'POST', url: '/v1/spot/trades',
-      headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' }, payload: buyPayload
-    });
-    if (repeatedBuy.statusCode !== 200 || repeatedBuy.json().tradeId !== buyBodies[0].tradeId || repeatedBuy.json().replayed !== true) {
-      throw new Error('Spot retry did not replay the original committed trade.');
-    }
-
-    const replayWithChangedRequest = await app.inject({
-      method: 'POST', url: '/v1/spot/trades',
-      headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' },
-      payload: { ...buyPayload, amountMinor: '11000' }
-    });
-    if (replayWithChangedRequest.statusCode !== 409) throw new Error('Spot idempotency key accepted a changed request.');
-
-    const sellAmount = (boughtBase / 2n).toString();
-    const sell = await app.inject({
-      method: 'POST', url: '/v1/spot/trades',
-      headers: { cookie, 'idempotency-key': 'phase03-spot-sell-001' },
-      payload: { marketId: 'apex-demo', side: 'SELL', amountMinor: sellAmount, maxSlippageBps: 1500 }
-    });
-    if (sell.statusCode !== 201) throw new Error('Spot sell failed: ' + sell.statusCode + ' ' + sell.body);
-    if (BigInt(sell.json().amountOutMinor) <= 0n) throw new Error('Spot sell returned no quote asset.');
 
     const assertPoolReconciles = async (label: string) => {
       const state = await db.query(
@@ -139,6 +116,30 @@ async function main() {
     if (BigInt(afterBuy.fee_ledger_minor) !== BigInt(buyBodies[0].feeMinor)) {
       throw new Error('BUY fee was not posted to the fee revenue account.');
     }
+    const repeatedBuy = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' }, payload: buyPayload
+    });
+    if (repeatedBuy.statusCode !== 200 || repeatedBuy.json().tradeId !== buyBodies[0].tradeId || repeatedBuy.json().replayed !== true) {
+      throw new Error('Spot retry did not replay the original committed trade.');
+    }
+
+    const replayWithChangedRequest = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' },
+      payload: { ...buyPayload, amountMinor: '11000' }
+    });
+    if (replayWithChangedRequest.statusCode !== 409) throw new Error('Spot idempotency key accepted a changed request.');
+
+    const sellAmount = (boughtBase / 2n).toString();
+    const sell = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-sell-001' },
+      payload: { marketId: 'apex-demo', side: 'SELL', amountMinor: sellAmount, maxSlippageBps: 1500 }
+    });
+    if (sell.statusCode !== 201) throw new Error('Spot sell failed: ' + sell.statusCode + ' ' + sell.body);
+    if (BigInt(sell.json().amountOutMinor) <= 0n) throw new Error('Spot sell returned no quote asset.');
+
     const afterSell = await assertPoolReconciles('After SELL');
     const expectedFees = BigInt(buyBodies[0].feeMinor) + BigInt(sell.json().feeMinor);
     if (BigInt(afterSell.fee_ledger_minor) !== expectedFees) {
