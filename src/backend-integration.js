@@ -357,7 +357,7 @@
     renderMarket();
     renderPortfolio();
   });
-  observer.observe($('#main'), {childList:true,subtree:true});
+  observer.observe($('#main'), {childList:true});
 
   refreshAll();
   renderMarket();
