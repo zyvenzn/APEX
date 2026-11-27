@@ -11,7 +11,7 @@
     "dev:api": "tsx watch server/src/index.ts",
     "start:api": "node server/dist/index.js",
     "build:api": "tsc -p server/tsconfig.json",
-    "migrate": "tsx server/src/db/migrate.ts",
+    "migrate": "tsx server/src/db/migrate-cli.ts",
     "test:api": "tsx --test server/tests/*.test.ts",
     "test:api:integration": "tsx server/tests/integration.ts",
     "test:api:browser": "tsx server/tests/browser.e2e.ts",

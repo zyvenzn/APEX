@@ -78,20 +78,3 @@ export async function runMigrations(
   }
   if (failure) throw failure;
 }
-
-async function main() {
-  const config = loadConfig();
-  const pool = new PgPool({ connectionString: config.DATABASE_URL, max: 2 });
-  try {
-    await runMigrations(pool, config);
-  } finally {
-    await pool.end();
-  }
-}
-
-if (process.argv[1]?.endsWith('migrate.ts') || process.argv[1]?.endsWith('migrate.js')) {
-  main().catch(error => {
-    console.error('Migration failed:', error instanceof Error ? error.message : 'unknown error');
-    process.exit(1);
-  });
-}
