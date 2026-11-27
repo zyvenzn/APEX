@@ -48,3 +48,44 @@ These are simplified and do not reproduce any real exchange.
 | TP / SL | Checked every 1.5 s while the page is open, filled at the current price |
 
 Not simulated: funding, cross margin, mark price, TWAP.
+
+## Backend foundation (Phase 01)
+
+The API is a separate Node.js + TypeScript service. The existing browser simulator remains a static frontend; the backend does not yet execute trades or own balances/prices.
+
+### Local services
+
+```sh
+cp server/.env.example .env
+docker compose up -d postgres redis
+npm install
+npm run migrate
+npm run dev:api
+```
+
+The API listens on `http://localhost:3001` by default.
+
+### API surface
+
+- `GET /v1/health/live` — process liveness.
+- `GET /v1/health/ready` — PostgreSQL and Redis readiness.
+- `POST /v1/auth/register` — create an account and session.
+- `POST /v1/auth/login` — authenticate and issue an opaque session cookie.
+- `GET /v1/auth/me` — return the current authenticated identity.
+- `POST /v1/auth/logout` — revoke the current session.
+- `GET /v1/ws` — authenticated WebSocket connection (connection/ping-pong foundation only).
+
+Passwords are hashed with Node.js scrypt. Session tokens are random opaque values; only SHA-256 token hashes are stored in PostgreSQL. Cookies are HttpOnly and SameSite=Lax. Production requires `COOKIE_SECURE=true` and HTTPS.
+
+### Backend checks
+
+```sh
+npm run build:api
+npm run test:api
+```
+
+The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them.
+
+### Current Phase 01 boundary
+
+This foundation does not yet connect the frontend to server identity, persist simulator balances, execute simulated trades, publish market events, or integrate external chains. Redis is currently used as a required readiness dependency and is reserved for later shared coordination/pub-sub. No real deposits, wallet signing, blockchain transactions, or real-money actions are implemented.
