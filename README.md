@@ -113,7 +113,7 @@ All endpoints below require the authenticated `apex_session` cookie:
 - `GET /v1/ledger/events?after=0&limit=100` — ordered event stream for replay/audit, using a monotonic sequence cursor.
 - `POST /v1/ledger/starter-credit` — one-time 10,000.00 virtual-credit grant. Requires an `Idempotency-Key` header (8–128 characters).
 
-Example response amounts are integer minor-unit strings, never floating-point numbers. The existing frontend has not yet been migrated to use these endpoints; localStorage state remains separate and is not authoritative for this backend ledger.
+Example response amounts are integer minor-unit strings, never floating-point numbers. The Phase 02 ledger endpoints were initially separate; the later Phase 03 backend panel now reads this ledger. Legacy simulator localStorage state remains separate and is not authoritative for the backend ledger.
 
 ### Phase 02 validation
 
@@ -138,7 +138,7 @@ The backend spot engine is a deterministic virtual constant-product pool. It is 
 - `POST /v1/spot/quote` — indicative quote; body: `{ "marketId": "apex-demo", "side": "BUY", "amountMinor": "10000", "maxSlippageBps": 1500 }`.
 - `POST /v1/spot/trades` — authenticated execution; same body plus `Idempotency-Key` header.
 
-`amountMinor` means quote minor units for BUY and base minor units for SELL. API quantities and balances are integer strings. These endpoints do not connect the existing browser simulator yet; frontend migration and user-facing trade history are separate follow-up work.
+`amountMinor` means quote minor units for BUY and base minor units for SELL. API quantities and balances are integer strings. The Phase 03 frontend integration adds a dedicated backend Spot panel and ledger-backed trade history; prototype markets remain local-only.
 
 
 ## Phase 03 frontend integration (backend Spot + Ledger)
