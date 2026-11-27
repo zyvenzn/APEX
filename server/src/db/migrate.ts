@@ -38,10 +38,10 @@ export async function runMigrations(
     )`);
 
     const files = (await readdir(directory))
-      .filter(file => /^\\d+_[a-z0-9_]+\\.sql$/.test(file))
+      .filter(file => /^\d+_[a-z0-9_]+\.sql$/.test(file))
       .sort();
     for (const file of files) {
-      const version = file.replace(/\\.sql$/, '');
+      const version = file.replace(/\.sql$/, '');
       const exists = await client.query(
         'SELECT 1 FROM schema_migrations WHERE version = $1', [version]
       );
