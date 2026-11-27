@@ -48,7 +48,16 @@
   async function request(path, options = {}) {
     const headers = Object.assign({}, options.headers || {});
     if (options.body) headers['content-type'] = 'application/json';
-    const response = await fetch(endpoint(path), Object.assign({}, options, {headers, credentials:'include'}));
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+    let response;
+    try {
+      response = await fetch(endpoint(path), Object.assign({}, options, {
+        headers, credentials:'include', signal:controller.signal
+      }));
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
     if (response.status === 204) return null;
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
