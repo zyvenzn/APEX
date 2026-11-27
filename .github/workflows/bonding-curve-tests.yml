@@ -16,7 +16,7 @@ permissions:
 jobs:
   validate:
     name: Build, unit tests and browser E2E
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout
