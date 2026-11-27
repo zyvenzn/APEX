@@ -36,7 +36,7 @@ function calculateQuote(market: MarketRow, side: Side, amount: bigint) {
     const fee = amount * feeBps / BPS;
     const net = amount - fee;
     const nextQuote = quote + net;
-    const nextBase = k / nextQuote;
+    const nextBase = ceilDiv(k, nextQuote);
     const baseOut = base - nextBase;
     if (baseOut <= 0n || nextBase <= 0n) throw new SpotInvalidOrderError('Order size is too small or pool inventory is exhausted.');
     const effectiveSlippageBps = (amount * base * BPS / (baseOut * quote)) > BPS
@@ -89,7 +89,7 @@ export async function listSpotMarkets(pool: Pool) {
             quote_asset_code AS "quoteAssetCode", base_reserve::text AS "baseReserveMinor",
             quote_reserve::text AS "quoteReserveMinor", base_decimals AS "baseDecimals",
             quote_decimals AS "quoteDecimals", fee_bps AS "feeBps", status,
-            (quote_reserve::numeric / base_reserve::numeric) AS "priceQuotePerBase"
+            (quote_reserve::numeric / base_reserve::numeric) * power(10::numeric, base_decimals - quote_decimals) AS "priceQuotePerBase"
        FROM spot_markets ORDER BY market_id`
   );
   return result.rows;
