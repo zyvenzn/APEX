@@ -89,7 +89,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && /(?:^|[\\\\/])migrate\\.(?:ts|js)$/.test(process.argv[1])) {
+if (process.argv[1]?.endsWith('migrate.ts') || process.argv[1]?.endsWith('migrate.js')) {
   main().catch(error => {
     console.error('Migration failed:', error instanceof Error ? error.message : 'unknown error');
     process.exit(1);
