@@ -18,11 +18,11 @@ export interface AppDependencies {
 export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> {
   const app = Fastify({ logger: deps.config.NODE_ENV !== 'test', trustProxy: deps.config.NODE_ENV === 'production' });
   app.decorateRequest('apexUser', null);
+  const expectedOrigin = new URL(deps.config.APP_ORIGIN).origin;
   await app.register(cookie);
-  await app.register(cors, { origin: deps.config.APP_ORIGIN, credentials: true });
+  await app.register(cors, { origin: expectedOrigin, credentials: true });
   await app.register(rateLimit, { global: false });
 
-  const expectedOrigin = new URL(deps.config.APP_ORIGIN).origin;
   app.addHook('onRequest', async (request, reply) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
     const origin = request.headers.origin;
@@ -56,6 +56,10 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   app.get('/v1/ws', {
     websocket: true,
     preValidation: async (request, reply) => {
+      let websocketOrigin: string | null = null;
+      try { websocketOrigin = request.headers.origin ? new URL(request.headers.origin).origin : null; }
+      catch { websocketOrigin = null; }
+      if (websocketOrigin !== expectedOrigin) return reply.code(403).send({ error: 'CSRF_ORIGIN_REJECTED' });
       request.apexUser = await resolveSession(request, deps.db);
       if (!request.apexUser) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     }
