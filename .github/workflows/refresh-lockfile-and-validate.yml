@@ -77,4 +77,5 @@ jobs:
       - name: Install Chromium and run browser E2E
         run: |
           npx playwright install --with-deps chromium
+          npm run test:api:browser
           npm run test:e2e
