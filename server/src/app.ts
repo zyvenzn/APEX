@@ -72,8 +72,14 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   });
 
   app.setErrorHandler((error, _request, reply) => {
-    app.log.error({ err: error }, 'request failed');
     if (reply.sent) return;
+    if (error.statusCode === 429) {
+      return reply.code(429).send({ error: 'RATE_LIMITED', message: 'Too many requests. Please retry later.' });
+    }
+    app.log.error({ err: error }, 'request failed');
+    if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      return reply.code(error.statusCode).send({ error: 'REQUEST_REJECTED', message: 'The request could not be accepted.' });
+    }
     reply.code(500).send({ error: 'INTERNAL_ERROR', message: 'An unexpected server error occurred.' });
   });
   return app;
