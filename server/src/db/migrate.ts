@@ -20,7 +20,7 @@ async function migrate() {
     for (const file of files) {
       const version = file.replace(/\.sql$/, '');
       const exists = await client.query('SELECT 1 FROM schema_migrations WHERE version = $1', [version]);
-      if (exists.rowCount > 0) continue;
+      if ((exists.rowCount ?? 0) > 0) continue;
       const sql = await readFile(resolve(directory, file), 'utf8');
       await client.query(sql);
       await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
