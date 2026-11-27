@@ -27,7 +27,7 @@ function mapError(error: unknown, reply: FastifyReply) {
 
 export async function registerSpotRoutes(app: FastifyInstance, deps: { db: Pool }) {
   app.get('/v1/spot/markets', async (_request, reply) => reply.send({ markets: await listSpotMarkets(deps.db) }));
-  app.post('/v1/spot/quote', async (request, reply) => {
+  app.post('/v1/spot/quote', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = tradeSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'INVALID_ORDER' });
     try {
@@ -35,7 +35,7 @@ export async function registerSpotRoutes(app: FastifyInstance, deps: { db: Pool 
       return reply.send(quote);
     } catch (error) { return mapError(error, reply); }
   });
-  app.post('/v1/spot/trades', async (request, reply) => {
+  app.post('/v1/spot/trades', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await resolveSession(request, deps.db);
     if (!user) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     const parsed = tradeSchema.safeParse(request.body);
