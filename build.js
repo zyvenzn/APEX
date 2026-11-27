@@ -14,27 +14,26 @@ const scriptAssets = [
 ];
 
 let html = read('index.html');
-const styleBlocks = html.match(/<style>[\\s\\S]*?<\\/style>/g) || [];
+const styleBlocks = html.match(/<style>[\s\S]*?<\/style>/g) || [];
 if (styleBlocks.length !== 1) {
   throw new Error(`Expected exactly one style block in index.html; found ${styleBlocks.length}`);
 }
-html = html.replace(styleBlocks[0], `<style>\\n${read('src/style.css')}\\n</style>`);
+html = html.replace(styleBlocks[0], `<style>\n${read('src/style.css')}\n</style>`);
 
 for (const asset of scriptAssets) {
   let matches = 0;
-  const scriptPattern = /<script\\b([^>]*)data-apex-build="([^"]+)"([^>]*)>[\\s\\S]*?<\\/script>/g;
+  const scriptPattern = /<script\b([^>]*)data-apex-build="([^"]+)"([^>]*)>[\s\S]*?<\/script>/g;
   html = html.replace(scriptPattern, (tag, before, src, after) => {
     if (src !== asset) return tag;
     matches++;
-    const sourcePath = asset.replace(/^\\//, '');
-    return `<script data-apex-build="${asset}">\\n${read(sourcePath)}\\n</script>`;
+    return `<script data-apex-build="${asset}">\n${read(asset.slice(1))}\n</script>`;
   });
   if (matches !== 1) {
     throw new Error(`Expected exactly one build marker for ${asset}; found ${matches}`);
   }
 }
 
-if (/<script\\b[^>]*\\bsrc=["']\\/src\\//.test(html)) {
+if (html.includes('src="/src/')) {
   throw new Error('Unbundled local script reference remains in index.html');
 }
 
