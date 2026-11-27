@@ -20,7 +20,7 @@ const KEY = 'apex-demo-v1';
   const fresh = async () => {
     await page.goto(URL_);
     await ev(() => { localStorage.clear(); sessionStorage.clear(); });
-    await page.reload(); await wait(250);
+    await page.reload(); await page.waitForFunction(() => !!window.__apex); await wait(250);
   };
   const deposit = async a => {
     await act('deposit'); await page.click('[data-act="depAmt"]');
@@ -198,9 +198,11 @@ const KEY = 'apex-demo-v1';
     const valid = async () => assert.ok(!/-\d|\$-/.test(await txt()), await txt());
     await valid();
     for (const tf of ['5M', '1H', '1D']) { await page.click("[data-act='abTf'][data-v='" + tf + "']"); await valid(); }
-    assert.ok((await txt()).includes('1 buys'));
+    const bought = await state();
+    assert.ok(bought.pos.some(p => p.id === 'SOL' && p.open), 'spot buy did not create a position');
+    assert.match(await txt(), /[1-9]\d* buys/, 'executed buy missing from transaction stats: ' + await txt());
     await act('qtSell', { v: '100' }); await valid();
-    assert.ok((await txt()).includes('1 sells'));
+    assert.match(await txt(), /[1-9]\d* sells/, 'executed sell missing from transaction stats: ' + await txt());
   });
   await test('NPC archetypes behave according to their type', async () => {
     const r = await ev(() => {
