@@ -134,7 +134,13 @@
 
   function renderMarket() {
     const page = $('#main .page');
-    if (!page || !market) return;
+    if (!page) return;
+    if (!market) {
+      let pending = $('#apex-backend-market');
+      if (!pending) { pending = document.createElement('section'); pending.id = 'apex-backend-market'; pending.style.cssText = 'margin:0 16px 14px;padding:14px;background:#11111c;border:1px solid #292943;border-radius:15px'; const balance = $('.bal', page); if (balance) balance.insertAdjacentElement('afterend', pending); else page.prepend(pending); }
+      pending.innerHTML = '<b>APEX backend Spot</b><div class="mut" style="font-size:12px;margin-top:5px">API connection is not ready or no active simulator market is available.</div><button class="btn pri sm" style="margin-top:10px" data-apex-action="configure">Configure API</button>';
+      return;
+    }
     let card = $('#apex-backend-market');
     if (!card) {
       card = document.createElement('section');
@@ -155,7 +161,7 @@
 
   function renderPortfolio() {
     const page = $('#main .page');
-    if (!page || !user) return;
+    if (!page || !user || !/profile/.test(location.hash)) return;
     let panel = $('#apex-ledger-portfolio');
     if (!panel) {
       panel = document.createElement('section');
