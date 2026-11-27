@@ -5,7 +5,6 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import type { AppConfig } from './config.js';
 import type { Pool } from 'pg';
-import type { Cache } from './db/pool.js';
 import { resolveSession } from './auth/session.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerLedgerRoutes } from './routes/ledger.js';
@@ -14,7 +13,6 @@ import { registerSpotRoutes } from './routes/spot.js';
 export interface AppDependencies {
   config: AppConfig;
   db: Pool;
-  redis: Cache;
 }
 
 export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> {
@@ -23,13 +21,30 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   await app.register(cookie);
   await app.register(cors, { origin: deps.config.APP_ORIGIN, credentials: true });
   await app.register(rateLimit, { global: false });
+
+  const expectedOrigin = new URL(deps.config.APP_ORIGIN).origin;
+  app.addHook('onRequest', async (request, reply) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
+    const origin = request.headers.origin;
+    const referer = request.headers.referer;
+    let requestOrigin: string | null = null;
+    try {
+      if (origin) requestOrigin = new URL(origin).origin;
+      else if (referer) requestOrigin = new URL(referer).origin;
+    } catch { requestOrigin = null; }
+    if ((origin || referer) && requestOrigin !== expectedOrigin) {
+      return reply.code(403).send({ error: 'CSRF_ORIGIN_REJECTED' });
+    }
+    if (deps.config.NODE_ENV === 'production' && !requestOrigin) {
+      return reply.code(403).send({ error: 'CSRF_ORIGIN_REQUIRED' });
+    }
+  });
   await app.register(websocket);
 
   app.get('/v1/health/live', async () => ({ status: 'ok', service: 'apex-api' }));
   app.get('/v1/health/ready', async (_request, reply) => {
-    const checks: Record<string, 'ok' | 'error'> = { postgres: 'error', redis: 'error' };
+    const checks: Record<string, 'ok' | 'error'> = { postgres: 'error' };
     try { await deps.db.query('SELECT 1'); checks.postgres = 'ok'; } catch { /* keep dependency details private */ }
-    try { await deps.redis.ping(); checks.redis = 'ok'; } catch { /* keep dependency details private */ }
     const ready = Object.values(checks).every(value => value === 'ok');
     return reply.code(ready ? 200 : 503).send({ status: ready ? 'ok' : 'degraded', checks });
   });
