@@ -88,7 +88,7 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     const bought = await page.evaluate(async api => {
       const response = await fetch(api + '/v1/ledger/events?after=0&limit=100', { credentials: 'include' });
       const data = await response.json();
-      return data.events.find((event: { eventType: string }) =>
+      return data.events.find((event: { eventType: string; payload: { side: string; amountOutMinor: string } }) =>
         event.eventType === 'spot_trade_executed' && event.payload.side === 'BUY'
       )?.payload.amountOutMinor as string | undefined;
     }, apiOrigin);
