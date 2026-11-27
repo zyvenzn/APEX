@@ -10,7 +10,8 @@ const scriptAssets = [
   '/src/bonding-curve.js',
   '/src/spot-trading-router.js',
   '/src/market-chart.js',
-  '/src/app.js'
+  '/src/app.js',
+  '/src/backend-integration.js'
 ];
 
 let html = read('index.html');
