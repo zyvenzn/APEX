@@ -66,6 +66,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS ledger_accounts_immutable ON ledger_accounts;
+CREATE TRIGGER ledger_accounts_immutable
+BEFORE UPDATE OR DELETE ON ledger_accounts
+FOR EACH ROW EXECUTE FUNCTION apex_reject_ledger_mutation();
+
 DROP TRIGGER IF EXISTS ledger_journals_immutable ON ledger_journals;
 CREATE TRIGGER ledger_journals_immutable
 BEFORE UPDATE OR DELETE ON ledger_journals
@@ -86,14 +91,20 @@ DECLARE
   journal_total numeric;
   expected_asset text;
   distinct_assets integer;
+  target_journal_id uuid;
 BEGIN
+  IF TG_TABLE_NAME = 'ledger_journals' THEN
+    target_journal_id := NEW.id;
+  ELSE
+    target_journal_id := NEW.journal_id;
+  END IF;
   SELECT COALESCE(SUM(amount_minor), 0), COUNT(DISTINCT asset_code)
     INTO journal_total, distinct_assets
     FROM ledger_entries
-   WHERE journal_id = NEW.journal_id;
-  SELECT asset_code INTO expected_asset FROM ledger_journals WHERE id = NEW.journal_id;
+   WHERE journal_id = target_journal_id;
+  SELECT asset_code INTO expected_asset FROM ledger_journals WHERE id = target_journal_id;
   IF journal_total <> 0 OR distinct_assets <> 1 OR EXISTS (
-    SELECT 1 FROM ledger_entries WHERE journal_id = NEW.journal_id AND asset_code <> expected_asset
+    SELECT 1 FROM ledger_entries WHERE journal_id = target_journal_id AND asset_code <> expected_asset
   ) THEN
     RAISE EXCEPTION 'ledger journal must balance in a single asset'
       USING ERRCODE = '23514';
@@ -103,6 +114,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS ledger_journal_balanced ON ledger_entries;
+DROP TRIGGER IF EXISTS ledger_journal_nonempty_balanced ON ledger_journals;
+CREATE CONSTRAINT TRIGGER ledger_journal_nonempty_balanced
+AFTER INSERT ON ledger_journals
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION apex_assert_ledger_journal_balanced();
 CREATE CONSTRAINT TRIGGER ledger_journal_balanced
 AFTER INSERT ON ledger_entries
 DEFERRABLE INITIALLY DEFERRED
