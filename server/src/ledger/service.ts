@@ -58,10 +58,10 @@ export async function claimStarterCredits(pool: Pool, userId: string, idempotenc
     const created = await client.query(
       `INSERT INTO ledger_journals
          (user_id, idempotency_key, request_hash, kind, asset_code, reference_type, reference_id, metadata)
-       VALUES ($1, $2, $3, 'starter_credit', $4, 'account', $1, $5::jsonb)
+       VALUES ($1, $2, $3, 'starter_credit', $4, 'account', $6, $5::jsonb)
        ON CONFLICT (user_id, idempotency_key) DO NOTHING
        RETURNING id`,
-      [userId, idempotencyKey, hash, ASSET_CODE, JSON.stringify({ amountMinor: STARTER_CREDIT_MINOR.toString(), source: 'virtual_starter_grant' })]
+      [userId, idempotencyKey, hash, ASSET_CODE, JSON.stringify({ amountMinor: STARTER_CREDIT_MINOR.toString(), source: 'virtual_starter_grant' }), userId]
     );
 
     if (created.rowCount === 0) {
