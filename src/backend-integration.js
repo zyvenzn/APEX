@@ -208,13 +208,13 @@
     const assets = '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #242438"><span>APEX_CREDIT <small class="mut">Virtual cash</small></span><b>' + money(credit()) + '</b></div>' +
       '<div style="display:flex;justify-content:space-between;padding:9px 0"><span>' + esc(market?.symbol || 'DEMO') + ' <small class="mut">Simulated asset</small></span><b>' + demoQty.toLocaleString('en-US',{maximumFractionDigits:9}) + ' <small class="mut">≈ ' + money(demoQty*price) + '</small></b></div>';
     panel.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">Backend portfolio</b><span class="tag">LEDGER SOURCE OF TRUTH</span><button class="ibtn" style="margin-left:auto" data-apex-action="refresh" aria-label="Refresh">↻</button></div>' +
+      '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">Backend Ledger Portfolio</b><span class="tag">SERVER DATA</span><button class="ibtn" style="margin-left:auto" data-apex-action="refresh" aria-label="Refresh">↻</button></div>' +
       '<div class="mut" style="font-size:11px;margin-top:4px">Authenticated as ' + esc(user.displayName || user.email) + ' · Balances reconstructed from immutable ledger events</div>' +
       '<div style="margin-top:10px">' + assets + '</div>' +
       (credit() <= 0 ? '<button class="btn pri block" style="margin-top:10px" data-apex-action="claim">Claim one-time 10,000 virtual credits</button>' : '') +
       '<div style="font-weight:700;margin-top:16px">Backend trade history</div>' +
       (history || '<div class="mut" style="padding:12px 0;font-size:12px">No backend spot trades yet.</div>') +
-      '<div class="mut" style="font-size:10px;margin-top:8px">This panel is ledger-backed. Legacy prototype positions elsewhere on this page remain local demo data.</div>';
+      '<div class="mut" style="font-size:10px;margin-top:8px">SOURCE: backend PostgreSQL ledger. This balance and trade history are separate from legacy localStorage simulator positions, which remain local demo data and are not included here.</div>';
   }
 
   function tradeModal(side, message = '') {
@@ -285,10 +285,9 @@
         body:JSON.stringify(payload)
       });
       clearPendingTradeKey(pending.fingerprint);
-      await loadMarkets();
-      await loadLedger();
       closeModal();
       toast((result.replayed ? 'Recovered' : 'Executed') + ' simulated ' + side.toLowerCase() + ' trade. Ledger updated.');
+      await Promise.allSettled([loadMarkets(), loadLedger()]);
     } catch (error) {
       // A network failure or 5xx can happen after the database commits. Keep the
       // fingerprint -> key mapping so retrying the same order safely replays it.
