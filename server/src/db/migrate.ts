@@ -1,6 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import pg, { type Pool } from 'pg';
 import { loadConfig } from '../config.js';
 import { assertDatabaseIdentity } from './database-identity.js';
@@ -90,7 +89,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (process.argv[1] && /(?:^|[\\\\/])migrate\\.(?:ts|js)$/.test(process.argv[1])) {
   main().catch(error => {
     console.error('Migration failed:', error instanceof Error ? error.message : 'unknown error');
     process.exit(1);
