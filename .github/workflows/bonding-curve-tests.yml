@@ -20,6 +20,35 @@ jobs:
     name: Build, unit tests and browser E2E
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://apex:apex_dev_password@localhost:5432/apex
+      REDIS_URL: redis://localhost:6379
+      APP_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: "false"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: apex
+          POSTGRES_USER: apex
+          POSTGRES_PASSWORD: apex_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apex -d apex"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,6 +86,12 @@ jobs:
 
       - name: Run backend tests
         run: npm run test:api
+
+      - name: Apply database migrations
+        run: npm run migrate
+
+      - name: Run PostgreSQL and Redis integration smoke test
+        run: npm run test:api:integration
 
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium
