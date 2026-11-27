@@ -5,9 +5,11 @@ on:
     branches:
       - feat/bonding-curve-graduation-v1
       - fix/phase-00-build-ci-e2e
+      - feat/phase-01-backend-foundation
   pull_request:
     branches:
       - feat/bonding-curve-graduation-v1
+      - fix/phase-00-build-ci-e2e
   workflow_dispatch:
 
 permissions:
