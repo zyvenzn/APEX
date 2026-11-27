@@ -14,4 +14,3 @@ export function createPool(config: AppConfig) {
 }
 
 export type Database = Pick<pg.Pool, 'query' | 'end'>;
-export type Cache = Pick<Redis, 'ping' | 'quit' | 'connect'>;
