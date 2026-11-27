@@ -158,3 +158,17 @@ test('production mutating requests require the configured Origin', async () => {
   assert.equal(allowed.statusCode, 204);
   await app.close();
 });
+
+test('registration endpoint enforces its per-IP rate limit', async () => {
+  const app = await makeApp(true);
+  const responses = [];
+  for (let i = 0; i < 6; i++) {
+    responses.push(await app.inject({
+      method: 'POST', url: '/v1/auth/register',
+      payload: { email: 'invalid', password: 'short', displayName: 'x' }
+    }));
+  }
+  assert.equal(responses.slice(0, 5).every(response => response.statusCode === 400), true);
+  assert.equal(responses[5].statusCode, 429);
+  await app.close();
+});
