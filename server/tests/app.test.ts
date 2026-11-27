@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp } from '../src/app.js';
 import type { AppConfig } from '../src/config.js';
-import { hashSessionToken } from '../src/auth/crypto.js';
 
 const config = {
   NODE_ENV: 'test', HOST: '127.0.0.1', PORT: 3001,
