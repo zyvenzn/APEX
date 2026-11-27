@@ -61,7 +61,6 @@ let wiping=false;
 const saveMkt=()=>{if(wiping)return;try{localStorage.setItem(MKT,JSON.stringify(Object.fromEntries(ALL.filter(t=>!t.dead).map(t=>[t.id,[t.p,t.base]]))));localStorage.setItem(SPOT_POOL_KEY,JSON.stringify(SPOT_POOLS));localStorage.setItem(BOND_MARKET_KEY,JSON.stringify(SPOT_ROUTER.serialize()));saveChartHistory()}catch(e){}saveMarketLedger();}
 window.addEventListener('pagehide',saveMkt);
 ALL.forEach(seedHist);
-for(const id of BOND_IDS){const t=DB[id];if(t){reconcileGraduation(t);recordMarketPoint(t)}}
 /* ---------- traders ---------- */
 const TN=['YetzerHaraTrap','0xForgivable','Aurelius','Killer','kv4rl','ColossalResurrection','leo','thinvalue','0xFalcs','Visi235','TightHarshYak','ProdigyNelson','lyleprat','IceSlayerMan','OmakaseOnly','econoar','moom123','jaqs','stashersaber','BIGWILL52','magif','malloc_eth','prevaile','VIBritania','babatooonde','tjr','PoorGoat_','s0m3','MambaKing245','end837','NFThashler','Fytcho Trades','TEEK420','Spacetime','Dazzle Novak','curb','pd','macfeurson','Pocket Change','derek.eth','The Night Owl','Bug','Marvolo','HugeWIN','SpicyRipeClam','gatsby','DopamineFeenFr1','lordarbiter','Lingönberry Capital','Binkieee','Jols','TheSOLstice','Salem','cosby','Qwerty','Lasercat397','Wood','dryflip'];
 const tAv=(n,s=36)=>{if(n===S.user.username&&!TR[n])return `<span class="av" style="width:${s}px;height:${s}px;background:#171724"><img src="${esc(S.user.avatar||IMG.AVATAR)}" alt=""></span>`;
@@ -97,7 +96,7 @@ try{const savedPools=JSON.parse(localStorage.getItem(SPOT_POOL_KEY)||'{}');for(c
 const BOND_MARKET_KEY='apex-bonding-markets-v1';
 let savedBondMarkets={};try{savedBondMarkets=JSON.parse(localStorage.getItem(BOND_MARKET_KEY)||'{}')||{}}catch(e){}
 const SPOT_ROUTER=ApexSpotRouter.createRouter({amm:ApexMarketEngine,curve:ApexBondingCurve,pools:SPOT_POOLS,bondingIds:[...BOND_IDS],savedMarkets:savedBondMarkets});
-for(const id of BOND_IDS){const t=DB[id];if(t){t.p=SPOT_ROUTER.price(id);t.mc=SPOT_ROUTER.marketCap(id);t.chg=(t.p/t.base-1)*100;if(SPOT_ROUTER.isGraduated(id))graduateToken(t)}}
+for(const id of BOND_IDS){const t=DB[id];if(t){t.p=SPOT_ROUTER.price(id);t.mc=SPOT_ROUTER.marketCap(id);t.chg=(t.p/t.base-1)*100;reconcileGraduation(t);recordMarketPoint(t)}}
 const maxSlip=()=>(S.qt.auto?15:S.qt.slip)/100;
 const spotPool=t=>SPOT_ROUTER.activePool(t.id)||SPOT_POOLS[t.id];
 const quoteBuy=(t,amt)=>{const q=SPOT_ROUTER.quoteBuy(t.id,amt);return {...q,px:q.executionPrice,qty:q.quantity,move:q.priceAfter/q.priceBefore}};
