@@ -15,7 +15,15 @@
       const pool = pools[id];
       if (!pool) continue;
       const saved = savedMarkets[id];
-      if (saved && saved.id === id && ['BONDING', 'GRADUATED'].includes(saved.status)) {
+      const validReserves = value => value && Number.isFinite(value.baseReserve) &&
+        value.baseReserve > 0 && Number.isFinite(value.quoteReserve) && value.quoteReserve > 0 &&
+        Number.isFinite(value.circulatingSupply) && value.circulatingSupply > 0;
+      const validSaved = saved && saved.id === id &&
+        ['BONDING', 'GRADUATED'].includes(saved.status) && validReserves(saved) &&
+        Number.isFinite(saved.feeBps) && saved.feeBps >= 0 && saved.feeBps < 10000 &&
+        (saved.status !== 'GRADUATED' || (validReserves(saved.ammPool) &&
+          saved.ammPool.status === 'ACTIVE' && saved.ammPool.id === id));
+      if (validSaved) {
         markets[id] = saved;
       } else {
         markets[id] = curve.createMarket({
@@ -32,7 +40,8 @@
         }
       }
       if (markets[id].status === 'GRADUATED' && markets[id].ammPool) {
-        pools[id] = normalizePool(markets[id].ammPool);
+        markets[id].ammPool = normalizePool(markets[id].ammPool);
+        pools[id] = markets[id].ammPool;
       }
     }
 
