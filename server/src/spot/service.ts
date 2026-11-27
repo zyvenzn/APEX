@@ -200,8 +200,8 @@ export async function executeSpotTrade(
       `UPDATE spot_markets SET base_reserve = $2, quote_reserve = $3, updated_at = now() WHERE market_id = $1`,
       [marketId, quote.nextBaseReserve.toString(), quote.nextQuoteReserve.toString()]
     );
-    const newDebitBalance = await balanceMinor(client, userId, debitAsset) - debitAmount;
-    const newCreditBalance = await balanceMinor(client, userId, creditAsset) + creditAmount;
+    const newDebitBalance = await balanceMinor(client, userId, debitAsset);
+    const newCreditBalance = await balanceMinor(client, userId, creditAsset);
     const result = {
       tradeId, marketId, symbol: market.symbol, side,
       amountInMinor: amount.toString(), amountOutMinor: creditAmount.toString(),
