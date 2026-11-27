@@ -177,7 +177,7 @@ export async function executeSpotTrade(
     const tradeId = tradeInsert.rows[0].id as string;
     const journalIds: string[] = [];
     for (const asset of [debitAsset, creditAsset]) {
-      const journalKey = idempotencyKey.slice(0, 120) + (asset === debitAsset ? ':debit' : ':credit');
+      const journalKey = 'spot:' + tradeId + (asset === debitAsset ? ':debit' : ':credit');
       const journal = await client.query(
         `INSERT INTO ledger_journals
           (user_id, idempotency_key, request_hash, kind, asset_code, reference_type, reference_id, metadata)
