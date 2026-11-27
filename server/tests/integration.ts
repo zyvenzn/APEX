@@ -92,7 +92,7 @@ async function main() {
 
     console.log('PostgreSQL + Redis integration passed: auth, atomic double-entry grant, idempotency/concurrency, balance/history, immutability, logout/revocation.');
   } finally {
-    if (userId) await db.query('DELETE FROM users WHERE id = $1', [userId]).catch(() => undefined);
+    // The CI database is disposable; append-only ledger history is retained until its Postgres service is discarded.
     if (app) await app.close();
     await Promise.allSettled([db.end(), redis.quit()]);
   }
