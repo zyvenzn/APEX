@@ -65,6 +65,9 @@ test('registration, session identity and logout work end-to-end through REST inj
         sessions.add(String(params[0]));
         return { rows: [], rowCount: 1 };
       }
+      if (sql.includes('FROM users WHERE lower(email)')) {
+        return { rows: user ? [{ ...user, password_hash: passwordHash }] : [], rowCount: user ? 1 : 0 };
+      }
       if (sql.includes('FROM auth_sessions s')) {
         const exists = sessions.has(String(params[0]));
         return { rows: exists && user ? [user] : [], rowCount: exists && user ? 1 : 0 };
@@ -94,13 +97,25 @@ test('registration, session identity and logout work end-to-end through REST inj
   assert.match(String(cookie), /HttpOnly/i);
   assert.match(String(cookie), /SameSite=Lax/i);
 
-  const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: sessionCookie } });
+  const badLogin = await app.inject({
+    method: 'POST', url: '/v1/auth/login',
+    payload: { email: 'test@example.com', password: 'wrong-password' }
+  });
+  assert.equal(badLogin.statusCode, 401);
+
+  const login = await app.inject({
+    method: 'POST', url: '/v1/auth/login',
+    payload: { email: 'TEST@example.com', password: 'correct-horse-battery' }
+  });
+  assert.equal(login.statusCode, 200);
+  const loginCookie = String(login.headers['set-cookie']).split(';')[0];
+  const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: loginCookie } });
   assert.equal(me.statusCode, 200);
   assert.equal(me.json().user.id, 'user-1');
 
-  const loggedOut = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { cookie: sessionCookie } });
+  const loggedOut = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { cookie: loginCookie } });
   assert.equal(loggedOut.statusCode, 204);
-  const afterLogout = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: sessionCookie } });
+  const afterLogout = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: loginCookie } });
   assert.equal(afterLogout.statusCode, 401);
   assert.equal(sessions.size, 0);
   await app.close();
