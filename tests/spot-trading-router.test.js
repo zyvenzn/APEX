@@ -70,3 +70,13 @@ test('router restores persisted bonding and graduated markets', () => {
   assert.equal(restored.market('CURVE').status, 'BONDING');
   assert.equal(restored.price('CURVE'), router.price('CURVE'));
 });
+
+test('router rejects an incomplete persisted graduation snapshot and reconstructs valid bonding state',()=>{
+  const {pools}=setup();
+  const router=Router.createRouter({amm:Amm,curve:Curve,pools,bondingIds:['CURVE'],
+    savedMarkets:{CURVE:{id:'CURVE',status:'GRADUATED',baseReserve:1,quoteReserve:1,circulatingSupply:1,feeBps:100}}});
+  assert.equal(router.isBonding('CURVE'),true);
+  assert.equal(router.isGraduated('CURVE'),false);
+  const account={cash:10,positions:{}};
+  assert.ok(router.executeBuy('CURVE',account,0.1,1).quantity>0);
+});
