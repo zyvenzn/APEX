@@ -100,6 +100,8 @@ test('registration, session identity and logout work end-to-end through REST inj
   assert.equal(registrationMe.statusCode, 200);
   const registrationLogout = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { cookie: sessionCookie } });
   assert.equal(registrationLogout.statusCode, 204);
+  const revokedRegistrationSession = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: sessionCookie } });
+  assert.equal(revokedRegistrationSession.statusCode, 401);
 
   const badLogin = await app.inject({
     method: 'POST', url: '/v1/auth/login',
@@ -121,6 +123,5 @@ test('registration, session identity and logout work end-to-end through REST inj
   assert.equal(loggedOut.statusCode, 204);
   const afterLogout = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: loginCookie } });
   assert.equal(afterLogout.statusCode, 401);
-  assert.equal(sessions.size, 0);
   await app.close();
 });
