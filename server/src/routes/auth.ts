@@ -16,6 +16,7 @@ const loginSchema = z.object({
 });
 
 async function issueSession(db: Database, userId: string, config: AppConfig) {
+  await db.query('DELETE FROM auth_sessions WHERE expires_at <= NOW()');
   const token = createSessionToken();
   const expiresAt = new Date(Date.now() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
   await db.query(
