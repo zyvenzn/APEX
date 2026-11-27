@@ -6,7 +6,7 @@ import type { AppConfig } from '../src/config.js';
 const config = {
   NODE_ENV: 'test', HOST: '127.0.0.1', PORT: 3001,
   DATABASE_URL: 'postgres://apex:secret@localhost:5432/apex',
-  REDIS_URL: 'redis://localhost:6379', APP_ORIGIN: 'http://localhost:3000',
+  APP_ORIGIN: 'http://localhost:3000',
   SESSION_TTL_HOURS: 168, COOKIE_SECURE: false
 } as AppConfig;
 
@@ -18,12 +18,7 @@ function makeApp(ready = true) {
     },
     end: async () => undefined
   };
-  const redis = {
-    ping: async () => { if (!ready) throw new Error('redis unavailable'); return 'PONG'; },
-    quit: async () => 'OK',
-    connect: async () => undefined
-  };
-  return buildApp({ config, db: db as never, redis: redis as never });
+  return buildApp({ config, db: db as never });
 }
 
 test('liveness endpoint does not depend on backing services', async () => {
@@ -34,11 +29,11 @@ test('liveness endpoint does not depend on backing services', async () => {
   await app.close();
 });
 
-test('readiness endpoint checks PostgreSQL and Redis', async () => {
+test('readiness endpoint checks PostgreSQL only', async () => {
   const app = await makeApp(true);
   const response = await app.inject({ method: 'GET', url: '/v1/health/ready' });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json().checks, { postgres: 'ok', redis: 'ok' });
+  assert.deepEqual(response.json().checks, { postgres: 'ok' });
   await app.close();
 });
 
@@ -81,8 +76,7 @@ test('registration, session identity and logout work end-to-end through REST inj
     },
     end: async () => undefined
   };
-  const redis = { ping: async () => 'PONG', quit: async () => 'OK', connect: async () => undefined };
-  const app = await buildApp({ config, db: db as never, redis: redis as never });
+  const app = await buildApp({ config, db: db as never });
 
   const registered = await app.inject({
     method: 'POST', url: '/v1/auth/register',
@@ -138,5 +132,15 @@ test('ledger endpoints require an authenticated session', async () => {
     const response = await app.inject(request);
     assert.equal(response.statusCode, 401, request.url + ' must require authentication');
   }
+  await app.close();
+});
+
+test('mutating requests reject foreign Origin and Referer values', async () => {
+  const app = await makeApp(true);
+  const badOrigin = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { origin: 'https://evil.example' } });
+  assert.equal(badOrigin.statusCode, 403);
+  assert.equal(badOrigin.json().error, 'CSRF_ORIGIN_REJECTED');
+  const badReferer = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { referer: 'https://evil.example/path' } });
+  assert.equal(badReferer.statusCode, 403);
   await app.close();
 });
