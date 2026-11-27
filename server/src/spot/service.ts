@@ -127,11 +127,7 @@ export async function executeSpotTrade(
     if (market.status !== 'ACTIVE') throw new SpotMarketPausedError('Market is not active.');
 
     const prior = await client.query(
-      \`SELECT t.id, t.request_hash, e.payload AS result
-         FROM spot_trades t JOIN ledger_events e
-           ON e.user_id = t.user_id AND e.event_type = 'spot_trade_executed'
-          AND e.payload->>'tradeId' = t.id::text
-        WHERE t.user_id = $1 AND t.idempotency_key = $2\`,
+      "SELECT t.id, t.request_hash, e.payload AS result FROM spot_trades t JOIN ledger_events e ON e.user_id = t.user_id AND e.event_type = 'spot_trade_executed' AND e.payload->>'tradeId' = t.id::text WHERE t.user_id = $1 AND t.idempotency_key = $2",
       [userId, idempotencyKey]
     );
     if (prior.rows[0]) {
@@ -167,18 +163,20 @@ export async function executeSpotTrade(
       throw new SpotInsufficientBalanceError('Insufficient virtual asset balance.');
     }
 
+    const tradeId = randomUUID();
     const tradeInsert = await client.query(
-      `INSERT INTO spot_trades (user_id, market_id, idempotency_key, request_hash, side, amount_minor)
-       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
-      [userId, marketId, idempotencyKey, requestHash, side, amount.toString()]
+      "INSERT INTO spot_trades (id, user_id, market_id, idempotency_key, request_hash, side, amount_minor) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id",
+      [tradeId, userId, marketId, idempotencyKey, requestHash, side, amount.toString()]
     );
     if (!tradeInsert.rows[0]) {
-      const raced = await client.query('SELECT id, request_hash, result FROM spot_trades WHERE user_id = $1 AND idempotency_key = $2', [userId, idempotencyKey]);
+      const raced = await client.query(
+        "SELECT t.id, t.request_hash, e.payload AS result FROM spot_trades t JOIN ledger_events e ON e.user_id = t.user_id AND e.event_type = 'spot_trade_executed' AND e.payload->>'tradeId' = t.id::text WHERE t.user_id = $1 AND t.idempotency_key = $2",
+        [userId, idempotencyKey]
+      );
       if (!raced.rows[0] || raced.rows[0].request_hash !== requestHash) throw new SpotIdempotencyConflictError('Idempotency key conflict.');
       await client.query('COMMIT');
       return { ...(raced.rows[0].result as Record<string, unknown>), tradeId: raced.rows[0].id, replayed: true };
     }
-    const tradeId = tradeInsert.rows[0].id as string;
     const journalIds: string[] = [];
     for (const asset of [debitAsset, creditAsset]) {
       const journalKey = 'spot:' + tradeId + (asset === debitAsset ? ':debit' : ':credit');
