@@ -83,8 +83,20 @@ export async function listSpotMarkets(pool: Pool) {
             quote_asset_code AS "quoteAssetCode", base_reserve::text AS "baseReserveMinor",
             quote_reserve::text AS "quoteReserveMinor", base_decimals AS "baseDecimals",
             quote_decimals AS "quoteDecimals", fee_bps AS "feeBps", status,
-            (quote_reserve::numeric / base_reserve::numeric) * power(10::numeric, base_decimals - quote_decimals) AS "priceQuotePerBase"
-       FROM spot_markets ORDER BY market_id`
+            (quote_reserve::numeric / base_reserve::numeric) * power(10::numeric, base_decimals - quote_decimals) AS "priceQuotePerBase",
+            (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
+              JOIN ledger_entries e ON e.account_id = a.id
+             WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_POOL:' || m.market_id
+               AND a.asset_code = m.base_asset_code) AS "baseReserveLedgerMinor",
+            (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
+              JOIN ledger_entries e ON e.account_id = a.id
+             WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_POOL:' || m.market_id
+               AND a.asset_code = m.quote_asset_code) AS "quoteReserveLedgerMinor",
+            (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
+              JOIN ledger_entries e ON e.account_id = a.id
+             WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_FEE_REVENUE:' || m.market_id
+               AND a.asset_code = m.quote_asset_code) AS "feeAccruedMinor"
+       FROM spot_markets m ORDER BY market_id`
   );
   return result.rows;
 }
@@ -225,10 +237,15 @@ export async function executeSpotTrade(
     );
     const newDebitBalance = await balanceMinor(client, userId, debitAsset);
     const newCreditBalance = await balanceMinor(client, userId, creditAsset);
+    const feeBalanceResult = await client.query(
+      'SELECT COALESCE(SUM(amount_minor), 0)::text AS balance FROM ledger_entries WHERE account_id = $1',
+      [feeAccounts.get(quoteAsset)]
+    );
+    const feeAccruedAfterMinor = String(feeBalanceResult.rows[0]?.balance ?? '0');
     const result = {
       tradeId, marketId, symbol: market.symbol, side,
       amountInMinor: amount.toString(), amountOutMinor: creditAmount.toString(),
-      debitAsset, creditAsset, feeMinor: quote.feeMinor,
+      debitAsset, creditAsset, feeMinor: quote.feeMinor, feeAccruedAfterMinor,
       effectiveSlippageBps: quote.effectiveSlippageBps, maxSlippageBps,
       baseReserveAfter: quote.nextBaseReserve.toString(), quoteReserveAfter: quote.nextQuoteReserve.toString(),
       balanceAfter: { [debitAsset]: newDebitBalance.toString(), [creditAsset]: newCreditBalance.toString() },
