@@ -7,7 +7,7 @@ APEX is a browser-based social trading simulator prototype. Prices, traders, bal
 The repository keeps readable source files under `src/`. To generate the self-contained static page:
 
 ```sh
-npm install
+npm ci
 npm run build
 ```
 
@@ -25,7 +25,7 @@ Then open `index.html` in a browser or serve the repository folder with any stat
 Node.js 22 or newer is recommended.
 
 ```sh
-npm install
+npm ci
 npm test
 npx playwright install chromium
 npm run build
