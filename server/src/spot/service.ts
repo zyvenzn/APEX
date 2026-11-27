@@ -65,12 +65,6 @@ async function ensureAccounts(client: PoolClient, userId: string, assets: string
        ON CONFLICT (owner_user_id, asset_code) WHERE owner_user_id IS NOT NULL DO NOTHING`,
       [userId, accountCode, asset]
     );
-    await client.query(
-      `INSERT INTO ledger_accounts (owner_user_id, account_code, asset_code)
-       VALUES (NULL, 'SPOT_CLEARING', $1)
-       ON CONFLICT (account_code, asset_code) WHERE owner_user_id IS NULL DO NOTHING`,
-      [asset]
-    );
   }
 }
 async function balanceMinor(client: PoolClient, userId: string, asset: string) {
@@ -143,17 +137,21 @@ export async function executeSpotTrade(
     const accountRows = await client.query(
       `SELECT id, owner_user_id, asset_code, account_code FROM ledger_accounts
         WHERE (owner_user_id = $1 AND asset_code = ANY($2::varchar[]))
-           OR (owner_user_id IS NULL AND account_code = 'SPOT_CLEARING' AND asset_code = ANY($2::varchar[]))
+           OR (owner_user_id IS NULL AND account_code IN ($3, $4) AND asset_code = ANY($2::varchar[]))
         ORDER BY id FOR UPDATE`,
-      [userId, [baseAsset, quoteAsset]]
+      [userId, [baseAsset, quoteAsset], 'SPOT_POOL:' + marketId, 'SPOT_FEE_REVENUE:' + marketId]
     );
     const userAccounts = new Map<string, string>();
-    const clearingAccounts = new Map<string, string>();
+    const poolAccounts = new Map<string, string>();
+    const feeAccounts = new Map<string, string>();
     for (const row of accountRows.rows) {
       if (row.owner_user_id) userAccounts.set(row.asset_code, row.id);
-      else clearingAccounts.set(row.asset_code, row.id);
+      else if (row.account_code === 'SPOT_POOL:' + marketId) poolAccounts.set(row.asset_code, row.id);
+      else if (row.account_code === 'SPOT_FEE_REVENUE:' + marketId) feeAccounts.set(row.asset_code, row.id);
     }
-    if (userAccounts.size !== 2 || clearingAccounts.size !== 2) throw new Error('Spot ledger account initialization failed.');
+    if (userAccounts.size !== 2 || poolAccounts.size !== 2 || !feeAccounts.has(quoteAsset)) {
+      throw new Error('Spot pool, fee, or user ledger account initialization failed.');
+    }
 
     const debitAsset = side === 'BUY' ? quoteAsset : baseAsset;
     const creditAsset = side === 'BUY' ? baseAsset : quoteAsset;
@@ -178,24 +176,47 @@ export async function executeSpotTrade(
       return { ...(raced.rows[0].result as Record<string, unknown>), tradeId: raced.rows[0].id, replayed: true };
     }
     const journalIds: string[] = [];
-    for (const asset of [debitAsset, creditAsset]) {
-      const journalKey = 'spot:' + tradeId + (asset === debitAsset ? ':debit' : ':credit');
+    const feeAmount = BigInt(quote.feeMinor);
+    for (const asset of [baseAsset, quoteAsset]) {
+      let userDelta: bigint;
+      let poolDelta: bigint;
+      let feeDelta = 0n;
+      if (asset === baseAsset) {
+        userDelta = side === 'BUY' ? creditAmount : -debitAmount;
+        poolDelta = -userDelta;
+      } else if (side === 'BUY') {
+        userDelta = -debitAmount;
+        feeDelta = feeAmount;
+        poolDelta = debitAmount - feeAmount;
+      } else {
+        userDelta = creditAmount;
+        feeDelta = feeAmount;
+        poolDelta = -(creditAmount + feeAmount);
+      }
+
       const journal = await client.query(
         `INSERT INTO ledger_journals
           (user_id, idempotency_key, request_hash, kind, asset_code, reference_type, reference_id, metadata)
          VALUES ($1, $2, $3, $4, $5, 'spot_trade', $6, $7::jsonb) RETURNING id`,
-        [userId, journalKey, requestHash, side === 'BUY' ? 'spot_buy' : 'spot_sell', asset, tradeId,
-          JSON.stringify({ marketId, side, amountMinor: amount.toString(), tradeId })]
+        [userId, 'spot:' + tradeId + ':' + asset, requestHash,
+          side === 'BUY' ? 'spot_buy' : 'spot_sell', asset, tradeId,
+          JSON.stringify({ marketId, side, amountMinor: amount.toString(), feeMinor: feeDelta.toString(), tradeId })]
       );
-      journalIds.push(journal.rows[0].id as string);
-      const userAccount = userAccounts.get(asset)!, clearingAccount = clearingAccounts.get(asset)!;
-      const userDelta = asset === debitAsset ? -debitAmount : creditAmount;
-      const clearingDelta = -userDelta;
+      const journalId = journal.rows[0].id as string;
+      journalIds.push(journalId);
       await client.query(
         `INSERT INTO ledger_entries (journal_id, account_id, asset_code, amount_minor)
          VALUES ($1, $2, $3, $4), ($1, $5, $3, $6)`,
-        [journal.rows[0].id, userAccount, asset, userDelta.toString(), clearingAccount, clearingDelta.toString()]
+        [journalId, userAccounts.get(asset)!, asset, userDelta.toString(),
+          poolAccounts.get(asset)!, poolDelta.toString()]
       );
+      if (feeDelta > 0n) {
+        await client.query(
+          `INSERT INTO ledger_entries (journal_id, account_id, asset_code, amount_minor)
+           VALUES ($1, $2, $3, $4)`,
+          [journalId, feeAccounts.get(asset)!, asset, feeDelta.toString()]
+        );
+      }
     }
 
     await client.query(
