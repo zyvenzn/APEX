@@ -39,6 +39,12 @@
           curve.graduate(markets[id]);
         }
       }
+      // Reconcile persisted BONDING snapshots too: a stale status must not keep
+      // a market on the curve after its persisted reserves crossed the target.
+      if (markets[id].status === 'BONDING' &&
+          curve.marketCap(markets[id]) + 1e-10 >= markets[id].graduationTargetUsd) {
+        curve.graduate(markets[id]);
+      }
       if (markets[id].status === 'GRADUATED' && markets[id].ammPool) {
         markets[id].ammPool = normalizePool(markets[id].ammPool);
         pools[id] = markets[id].ammPool;
