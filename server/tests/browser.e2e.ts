@@ -62,6 +62,10 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     const idempotencyKeys: string[] = [];
     let dropFirstResponse = true;
     await page.route(apiOrigin + '/v1/spot/trades', async route => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
       idempotencyKeys.push(route.request().headers()['idempotency-key'] || '');
       const response = await route.fetch();
       if (dropFirstResponse) {
