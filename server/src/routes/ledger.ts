@@ -38,12 +38,12 @@ export async function registerLedgerRoutes(app: FastifyInstance, deps: { db: Poo
     const user = await resolveSession(request, deps.db);
     if (!user) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     const query = z.object({
-      after: z.coerce.number().int().min(0).default(0),
+      after: z.string().regex(/^\\d+$/).default('0'),
       limit: z.coerce.number().int().min(1).max(500).default(100)
     }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ error: 'INVALID_CURSOR' });
     const events = await getLedgerEvents(deps.db, user.id, query.data.after, query.data.limit);
-    return reply.send({ events, nextAfter: events.length ? Number(events.at(-1)?.sequenceId ?? query.data.after) : query.data.after });
+    return reply.send({ events, nextAfter: events.at(-1)?.sequenceId ?? query.data.after });
   });
 
   app.post('/v1/ledger/starter-credit', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
