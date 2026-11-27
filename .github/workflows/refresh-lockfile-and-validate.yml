@@ -56,6 +56,13 @@ jobs:
           node --check src/backend-integration.js
           node --check build.js
           npm run build
+      - name: Commit regenerated standalone bundle
+        run: |
+          git add index.html
+          if ! git diff --cached --quiet; then
+            git commit -m "Regenerate standalone frontend bundle"
+            git push origin HEAD:fix/pre-staging-audit-reconciliation-security
+          fi
           git diff --exit-code -- index.html
       - name: Run frontend unit tests
         run: npm test
