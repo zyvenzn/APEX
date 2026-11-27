@@ -60,6 +60,7 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     await page.goto(frontendOrigin + '/#/home');
     await page.locator('[data-apex-action="buy"]').waitFor();
     const idempotencyKeys: string[] = [];
+    const tradeResponses: Array<{status: number; body: string}> = [];
     let dropFirstResponse = true;
     await page.route(apiOrigin + '/v1/spot/trades', async route => {
       if (route.request().method() !== 'POST') {
@@ -68,12 +69,14 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
       }
       idempotencyKeys.push(route.request().headers()['idempotency-key'] || '');
       const response = await route.fetch();
+      const responseBody = await response.body();
+      tradeResponses.push({ status: response.status(), body: responseBody.toString() });
       if (dropFirstResponse) {
         dropFirstResponse = false;
         await route.abort('failed');
         return;
       }
-      await route.fulfill({ response });
+      await route.fulfill({ response, body: responseBody });
     });
 
     await page.locator('[data-apex-action="buy"]').click();
@@ -84,7 +87,12 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
       return !!error && error.textContent.length > 0;
     });
     await page.locator('[data-apex-action="execute"]').click();
-    await page.locator('#apex-backend-modal').waitFor({ state: 'detached' });
+    try {
+      await page.locator('#apex-backend-modal').waitFor({ state: 'detached' });
+    } catch {
+      const errorMessage = await page.locator('#apex-trade-error').textContent().catch(() => 'no trade error element');
+      throw new Error('Retry did not complete. UI error: ' + errorMessage + '; server responses: ' + JSON.stringify(tradeResponses));
+    }
     assert.equal(idempotencyKeys.length, 2, 'the browser should send the order twice');
     assert.ok(idempotencyKeys[0], 'first request must include an idempotency key');
     assert.equal(idempotencyKeys[0], idempotencyKeys[1], 'retry must reuse the same idempotency key');
