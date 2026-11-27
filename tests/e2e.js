@@ -263,7 +263,7 @@ const KEY = 'apex-demo-v1';
     assert.strictEqual(initial.target, 69000);
     near(initial.p, initial.mc / 69000 * 100, 0.01);
     assert.strictEqual(initial.bonding, !initial.graduated);
-    near(initial.p, initial.graduated ? 100 : initial.mc / 69000 * 100, 0.01);
+    near(initial.p, Math.max(0, Math.min(100, initial.mc / 69000 * 100)), 0.01);
     const thresholdProgress = await ev(() => { const t=__apex.DB.VEXDIAL, old=t.mc; t.mc=69000;
       const p=__apex.market.progress('VEXDIAL'); t.mc=old; return p; });
     near(thresholdProgress, 100, 0.001);
