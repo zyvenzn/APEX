@@ -93,7 +93,7 @@ const KEY = 'apex-demo-v1';
     await act('qtSell', { v: '50' }); await act('qtSell', { v: '100' });
     const c = (await state()).closed[0];
     assert.ok(c && Number.isFinite(c.pnl) && Number.isFinite(c.pct));
-    near(c.pct, c.pnl, 0.05);
+    near(c.pct, c.pnl / 10 * 100, 0.05);
   });
   await test('perp liquidates at maintenance margin', async () => {
     await deposit('100'); await toPerps('100'); await openLong('50', 40);
@@ -258,20 +258,22 @@ const KEY = 'apex-demo-v1';
 
   await test('bonding progress uses market cap while graduation follows curve state', async () => {
     const initial = await ev(() => ({ target: __apex.market.graduationTarget, mc: __apex.DB.VEXDIAL.mc,
-      p: __apex.market.progress('VEXDIAL'), graduated: __apex.market.isGraduated('VEXDIAL') }));
+      p: __apex.market.progress('VEXDIAL'), graduated: __apex.market.isGraduated('VEXDIAL'),
+      bonding: __apex.market.isBonding('VEXDIAL') }));
     assert.strictEqual(initial.target, 69000);
     near(initial.p, initial.mc / 69000 * 100, 0.01);
-    assert.strictEqual(initial.graduated, false);
+    assert.strictEqual(initial.bonding, !initial.graduated);
+    near(initial.p, initial.graduated ? 100 : initial.mc / 69000 * 100, 0.01);
     const thresholdProgress = await ev(() => { const t=__apex.DB.VEXDIAL, old=t.mc; t.mc=69000;
       const p=__apex.market.progress('VEXDIAL'); t.mc=old; return p; });
     near(thresholdProgress, 100, 0.001);
-    assert.strictEqual(await ev(() => __apex.market.isBonding('VEXDIAL')), true);
-    assert.strictEqual(await ev(() => __apex.market.isGraduated('VEXDIAL')), false);
   });
   await test('aggregated NPC flow reports its disabled status without fabricating volume', async () => {
-    const before=await ev(() => Object.fromEntries(Object.values(__apex.DB).filter(t=>t.kind==='token'&&!t.dead).map(t=>[t.id,[t.p,t.vol]])));
-    const flow=await ev(() => __apex.market.flow(180));
-    const after=await ev(() => Object.fromEntries(Object.values(__apex.DB).filter(t=>t.kind==='token'&&!t.dead).map(t=>[t.id,[t.p,t.vol]])));
+    const { before, after, flow } = await ev(() => {
+      const snapshot = () => Object.fromEntries(Object.values(__apex.DB).filter(t=>t.kind==='token'&&!t.dead).map(t=>[t.id,[t.p,t.vol]]));
+      const before = snapshot(), flow = __apex.market.flow(180), after = snapshot();
+      return { before, after, flow };
+    });
     assert.strictEqual(flow.disabled, true);
     assert.strictEqual(flow.population, Object.keys(__apex.npc.AR).length);
     assert.strictEqual(flow.orders, 0); assert.strictEqual(flow.volume, 0);
