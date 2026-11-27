@@ -109,7 +109,7 @@ async function main() {
     const noFunds = await app.inject({
       method: 'POST', url: '/v1/spot/trades',
       headers: { cookie, 'idempotency-key': 'phase03-spot-overdraft-01' },
-      payload: { marketId: 'apex-demo', side: 'BUY', amountMinor: '999999999999', maxSlippageBps: 5000 }
+      payload: { marketId: 'apex-demo', side: 'BUY', amountMinor: '2000000', maxSlippageBps: 5000 }
     });
     if (noFunds.statusCode !== 409 || noFunds.json().error !== 'INSUFFICIENT_BALANCE') {
       throw new Error('Spot buy allowed a negative quote balance: ' + noFunds.statusCode + ' ' + noFunds.body);
