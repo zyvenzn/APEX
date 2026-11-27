@@ -139,3 +139,22 @@ The backend spot engine is a deterministic virtual constant-product pool. It is 
 - `POST /v1/spot/trades` — authenticated execution; same body plus `Idempotency-Key` header.
 
 `amountMinor` means quote minor units for BUY and base minor units for SELL. API quantities and balances are integer strings. These endpoints do not connect the existing browser simulator yet; frontend migration and user-facing trade history are separate follow-up work.
+
+
+## Phase 03 frontend integration (backend Spot + Ledger)
+
+The frontend now contains a dedicated backend Spot panel for the seeded `apex-demo` / `DEMO` market. It does not route the prototype's unrelated local market cards into this single backend market.
+
+### Connect the frontend
+
+1. Deploy the Fastify API and its PostgreSQL + Redis dependencies separately.
+2. Set the API's `APP_ORIGIN` to the exact deployed frontend origin (no wildcard) and set `COOKIE_SECURE=true` in production.
+3. Configure the API origin from the frontend's **Backend Spot → Configure API** panel, for example `https://your-api.example.com`.
+4. Create an APEX backend account or sign in. Browser requests use credentialed cookies.
+5. Claim the one-time 10,000.00 virtual starter credit, then trade the `DEMO` market.
+
+The UI calls `GET /v1/spot/markets`, `POST /v1/spot/quote`, `POST /v1/spot/trades`, `GET /v1/ledger/balance`, and paginated `GET /v1/ledger/events`. Each trade uses a fresh `Idempotency-Key`. Portfolio balances and trade history are rendered from ledger data; the legacy prototype portfolio remains explicitly labelled as local demo data.
+
+For production cross-origin cookies, the API sets `SameSite=None; Secure`. Some browsers or privacy settings block third-party cookies regardless; a same-site custom domain or same-origin reverse proxy is the most reliable deployment arrangement. The API is not deployed by this code change, so configure a reachable API origin before expecting live backend trading.
+
+All orders remain simulated. No wallet signing, real deposits, blockchain transactions, or external DEX writes are performed. The frontend refreshes market snapshots by HTTP polling; the existing WebSocket endpoint does not yet publish market broadcasts.
