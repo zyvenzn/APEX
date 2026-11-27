@@ -36,14 +36,63 @@ async function main() {
     const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } });
     if (me.statusCode !== 200 || me.json().user.id !== userId) throw new Error('Authenticated identity lookup failed');
 
+    const starterKey = 'phase02-starter-credit-001';
+    const concurrentClaims = await Promise.all([
+      app.inject({ method: 'POST', url: '/v1/ledger/starter-credit', headers: { cookie, 'idempotency-key': starterKey } }),
+      app.inject({ method: 'POST', url: '/v1/ledger/starter-credit', headers: { cookie, 'idempotency-key': starterKey } })
+    ]);
+    const claimStatuses = concurrentClaims.map(result => result.statusCode).sort();
+    if (claimStatuses[0] !== 200 || claimStatuses[1] !== 201) {
+      throw new Error('Concurrent idempotent starter credit claims failed: ' + claimStatuses.join(','));
+    }
+    const claimBodies = concurrentClaims.map(result => result.json());
+    if (claimBodies[0].journalId !== claimBodies[1].journalId) throw new Error('Idempotent requests created different journals');
+    if (claimBodies.some(body => body.balanceMinor !== '1000000')) throw new Error('Starter credit balance is incorrect');
+    if (claimBodies.some(body => body.note?.includes('No cryptocurrency') !== true)) throw new Error('Virtual-credit disclosure missing');
+
+    const repeatedClaim = await app.inject({
+      method: 'POST', url: '/v1/ledger/starter-credit',
+      headers: { cookie, 'idempotency-key': 'phase02-starter-credit-002' }
+    });
+    if (repeatedClaim.statusCode !== 409) throw new Error('Starter credit was claimable more than once');
+
+    const balance = await app.inject({ method: 'GET', url: '/v1/ledger/balance', headers: { cookie } });
+    if (balance.statusCode !== 200 || balance.json().balanceMinor !== '1000000') throw new Error('Ledger balance endpoint returned an incorrect balance');
+
+    const history = await app.inject({ method: 'GET', url: '/v1/ledger/journals', headers: { cookie } });
+    if (history.statusCode !== 200 || history.json().journals.length !== 1) throw new Error('Ledger journal history is incorrect');
+
+    const eventPage = await app.inject({ method: 'GET', url: '/v1/ledger/events?after=0&limit=10', headers: { cookie } });
+    if (eventPage.statusCode !== 200 || eventPage.json().events.length !== 1) throw new Error('Ledger event replay page is incorrect');
+    if (eventPage.json().events[0].eventType !== 'starter_credit_granted') throw new Error('Unexpected ledger replay event type');
+    const eventTail = await app.inject({
+      method: 'GET', url: '/v1/ledger/events?after=' + eventPage.json().nextAfter,
+      headers: { cookie }
+    });
+    if (eventTail.statusCode !== 200 || eventTail.json().events.length !== 0) throw new Error('Ledger event cursor did not advance');
+
+    const journalId = claimBodies[0].journalId;
+    const entries = await db.query(
+      'SELECT amount_minor::text AS amount_minor FROM ledger_entries WHERE journal_id = $1 ORDER BY id',
+      [journalId]
+    );
+    if (entries.rows.length !== 2 || BigInt(entries.rows[0].amount_minor) + BigInt(entries.rows[1].amount_minor) !== 0n) {
+      throw new Error('Double-entry journal is not balanced');
+    }
+    const immutableAttempt = await db.query(
+      'UPDATE ledger_entries SET amount_minor = amount_minor WHERE journal_id = $1',
+      [journalId]
+    ).then(() => false, error => (error as { code?: string }).code === '55000');
+    if (!immutableAttempt) throw new Error('Ledger entries are not immutable');
+
     const logout = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { cookie } });
     if (logout.statusCode !== 204) throw new Error('Logout failed: ' + logout.body);
     const revoked = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } });
     if (revoked.statusCode !== 401) throw new Error('Session was not revoked');
 
-    console.log('PostgreSQL + Redis integration passed: readiness, register, login, identity, logout/revocation.');
+    console.log('PostgreSQL + Redis integration passed: auth, atomic double-entry grant, idempotency/concurrency, balance/history, immutability, logout/revocation.');
   } finally {
-    if (userId) await db.query('DELETE FROM users WHERE id = $1', [userId]).catch(() => undefined);
+    // The CI database is disposable; append-only ledger history is retained until its Postgres service is discarded.
     if (app) await app.close();
     await Promise.allSettled([db.end(), redis.quit()]);
   }

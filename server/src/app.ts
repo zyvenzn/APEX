@@ -4,13 +4,15 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import type { AppConfig } from './config.js';
-import type { Cache, Database } from './db/pool.js';
+import type { Pool } from 'pg';
+import type { Cache } from './db/pool.js';
 import { resolveSession } from './auth/session.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerLedgerRoutes } from './routes/ledger.js';
 
 export interface AppDependencies {
   config: AppConfig;
-  db: Database;
+  db: Pool;
   redis: Cache;
 }
 
@@ -32,6 +34,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
   });
 
   await registerAuthRoutes(app, { db: deps.db, config: deps.config });
+  await registerLedgerRoutes(app, { db: deps.db });
 
   app.get('/v1/ws', {
     websocket: true,

@@ -125,3 +125,18 @@ test('registration, session identity and logout work end-to-end through REST inj
   assert.equal(afterLogout.statusCode, 401);
   await app.close();
 });
+
+test('ledger endpoints require an authenticated session', async () => {
+  const app = await makeApp(true);
+  const requests = [
+    { method: 'GET' as const, url: '/v1/ledger/balance' },
+    { method: 'GET' as const, url: '/v1/ledger/journals' },
+    { method: 'GET' as const, url: '/v1/ledger/events' },
+    { method: 'POST' as const, url: '/v1/ledger/starter-credit' }
+  ];
+  for (const request of requests) {
+    const response = await app.inject(request);
+    assert.equal(response.statusCode, 401, request.url + ' must require authentication');
+  }
+  await app.close();
+});
