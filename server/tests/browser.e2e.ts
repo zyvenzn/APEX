@@ -111,7 +111,12 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     await page.locator('[data-apex-action="sell"]').click();
     await page.locator('#apex-trade-amount').fill(sellInput);
     await page.locator('[data-apex-action="execute"]').click();
-    await page.locator('#apex-backend-modal').waitFor({ state: 'detached' });
+    try {
+      await page.locator('#apex-backend-modal').waitFor({ state: 'detached' });
+    } catch {
+      const errorMessage = await page.locator('#apex-trade-error').textContent().catch(() => 'no trade error element');
+      throw new Error('SELL did not complete. UI error: ' + errorMessage + '; server responses: ' + JSON.stringify(tradeResponses));
+    }
     await page.unroute(apiOrigin + '/v1/spot/trades');
 
     await page.goto(frontendOrigin + '/#/profile');
