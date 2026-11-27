@@ -297,7 +297,7 @@
       // refresh authoritative balances/history, then dismiss the order modal so
       // the next action cannot read stale portfolio state.
       clearPendingTradeKey(pending.fingerprint);
-      await Promise.all([loadMarkets(), loadLedger()]);
+      await Promise.allSettled([loadMarkets(), loadLedger()]);
       closeModal();
       toast((result.replayed ? 'Recovered' : 'Executed') + ' simulated ' + side.toLowerCase() + ' trade. Ledger updated.');
     } catch (error) {
