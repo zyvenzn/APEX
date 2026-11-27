@@ -33,7 +33,7 @@ export async function registerLedgerRoutes(app: FastifyInstance, deps: { db: Poo
     return reply.send({ journals });
   });
 
-  app.post('/v1/ledger/starter-credit', async (request, reply) => {
+  app.post('/v1/ledger/starter-credit', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
     const user = await resolveSession(request, deps.db);
     if (!user) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     const rawKey = request.headers['idempotency-key'];
