@@ -134,7 +134,7 @@
 
   function renderMarket() {
     const page = $('#main .page');
-    if (!page) return;
+    if (!page || !/(^#\/home$|^$)/.test(location.hash.replace(/^#/, ''))) return;
     if (!market) {
       let pending = $('#apex-backend-market');
       if (!pending) { pending = document.createElement('section'); pending.id = 'apex-backend-market'; pending.style.cssText = 'margin:0 16px 14px;padding:14px;background:#11111c;border:1px solid #292943;border-radius:15px'; const balance = $('.bal', page); if (balance) balance.insertAdjacentElement('afterend', pending); else page.prepend(pending); }
@@ -280,6 +280,7 @@
       else { renderMarket(); renderPortfolio(); }
       return true;
     } catch (error) {
+      renderMarket();
       const card = $('#apex-backend-market');
       if (card) card.innerHTML = '<b>Backend not connected</b><div class="mut" style="font-size:12px;margin-top:6px">' + esc(error.message) + '</div><button class="btn pri sm" style="margin-top:10px" data-apex-action="configure">Configure API</button>';
       return false;
