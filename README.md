@@ -51,13 +51,13 @@ Not simulated: funding, cross margin, mark price, TWAP.
 
 ## Backend foundation (Phase 01)
 
-The API is a separate Node.js + TypeScript service. The existing browser simulator remains a static frontend; the backend does not yet execute trades or own balances/prices.
+The API is a separate Node.js + TypeScript service. The existing browser simulator remains a static frontend; the backend Spot and Ledger panel uses PostgreSQL as its source of truth.
 
 ### Local services
 
 ```sh
 cp server/.env.example .env
-docker compose up -d postgres redis
+docker compose up -d postgres
 npm install
 npm run migrate
 npm run dev:api
@@ -86,11 +86,11 @@ npm run migrate
 npm run test:api:integration
 ```
 
-The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them. The integration smoke test expects the PostgreSQL and Redis services from Docker Compose to be running.
+The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them. The integration smoke test expects the PostgreSQL service from Docker Compose to be running.
 
 ### Current Phase 01 boundary
 
-This foundation does not yet connect the frontend to server identity, persist simulator balances, execute simulated trades, publish market events, or integrate external chains. Redis is currently used as a required readiness dependency and is reserved for later shared coordination/pub-sub. No real deposits, wallet signing, blockchain transactions, or real-money actions are implemented.
+This foundation does not yet connect the frontend to server identity, persist simulator balances, execute simulated trades, publish market events, or integrate external chains. Redis is not required by the current backend and is intentionally omitted. Fastify rate limits are process-local; keep staging to one API instance. A distributed limiter must be introduced before horizontally scaling a public production API. No real deposits, wallet signing, blockchain transactions, or real-money actions are implemented.
 
 ## Simulation ledger (Phase 02)
 
@@ -117,7 +117,7 @@ Example response amounts are integer minor-unit strings, never floating-point nu
 
 ### Phase 02 validation
 
-CI applies all versioned SQL migrations, then runs the PostgreSQL + Redis integration test. The ledger integration checks concurrent duplicate requests, idempotency, one-time claim enforcement, balance/history, balanced postings, and append-only protections.
+CI applies all versioned SQL migrations, then runs the PostgreSQL integration test. The ledger integration checks concurrent duplicate requests, idempotency, one-time claim enforcement, balance/history, balanced postings, and append-only protections.
 
 
 ## Spot market engine (Phase 03)
@@ -153,8 +153,8 @@ The frontend now contains a dedicated backend Spot panel for the seeded `apex-de
 4. Create an APEX backend account or sign in. Browser requests use credentialed cookies.
 5. Claim the one-time 10,000.00 virtual starter credit, then trade the `DEMO` market.
 
-The UI calls `GET /v1/spot/markets`, `POST /v1/spot/quote`, `POST /v1/spot/trades`, `GET /v1/ledger/balance`, and paginated `GET /v1/ledger/events`. Each trade uses a fresh `Idempotency-Key`. Portfolio balances and trade history are rendered from ledger data; the legacy prototype portfolio remains explicitly labelled as local demo data.
+The UI calls `GET /v1/spot/markets`, `POST /v1/spot/quote`, `POST /v1/spot/trades`, `GET /v1/ledger/balance`, and paginated `GET /v1/ledger/events`. A pending order retains the same `Idempotency-Key` across network retries for the identical order payload. Portfolio balances and trade history are rendered from ledger data; the legacy prototype portfolio remains explicitly labelled as local demo data.
 
-For production cross-origin cookies, the API sets `SameSite=None; Secure`. Some browsers or privacy settings block third-party cookies regardless; a same-site custom domain or same-origin reverse proxy is the most reliable deployment arrangement. The API is not deployed by this code change, so configure a reachable API origin before expecting live backend trading.
+For production cross-origin cookies, the API sets `SameSite=None; Secure`. Some browsers or privacy settings block third-party cookies regardless; a same-site custom domain or same-origin reverse proxy is the most reliable deployment arrangement. The API is not deployed by this code change, so configure a reachable API origin before expecting live backend trading. The Backend Ledger Portfolio is server-backed PostgreSQL data; legacy simulator positions remain localStorage-only demo data and are not combined.
 
 All orders remain simulated. No wallet signing, real deposits, blockchain transactions, or external DEX writes are performed. The frontend refreshes market snapshots by HTTP polling; the existing WebSocket endpoint does not yet publish market broadcasts.
