@@ -37,7 +37,7 @@ const KEY = 'apex-demo-v1';
   let failed = 0;
   const test = async (name, fn) => {
     try { await fresh(); await fn(); console.log('ok  ', name); }
-    catch (e) { failed++; console.log('FAIL', name, '-', e.message.split('\n')[0]); }
+    catch (e) { failed++; console.log('FAIL', name, '-', e.stack || e.message); }
   };
 
   await test('every page and market renders', async () => {
