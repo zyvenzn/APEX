@@ -147,6 +147,10 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     }, apiOrigin);
     assert.deepEqual(logoutState, { logout: 204, me: 401 });
 
+    // The API logout above deliberately revokes the server session outside the
+    // UI. Reload so the frontend revalidates /auth/me instead of retaining its
+    // in-memory pre-logout user snapshot.
+    await page.reload();
     await page.goto(frontendOrigin + '/#/home');
     await page.locator('[data-apex-action="buy"]').click();
     await page.locator('#apex-auth-email').fill(email);
