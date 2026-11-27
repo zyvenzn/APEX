@@ -96,6 +96,13 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     assert.equal(idempotencyKeys.length, 2, 'the browser should send the order twice');
     assert.ok(idempotencyKeys[0], 'first request must include an idempotency key');
     assert.equal(idempotencyKeys[0], idempotencyKeys[1], 'retry must reuse the same idempotency key');
+    assert.equal(tradeResponses.length, 2, 'the dropped response and retry must both reach the API');
+    const firstBuyResponse = JSON.parse(tradeResponses[0].body);
+    const replayBuyResponse = JSON.parse(tradeResponses[1].body);
+    assert.equal(tradeResponses[0].status, 201, 'the first request must commit a new trade');
+    assert.equal(tradeResponses[1].status, 200, 'the retry must return the replay response');
+    assert.equal(replayBuyResponse.replayed, true, 'the retry response must identify a replay');
+    assert.equal(replayBuyResponse.tradeId, firstBuyResponse.tradeId, 'the retry must return the original trade ID');
 
     const bought = await page.evaluate(async api => {
       const response = await fetch(api + '/v1/ledger/events?after=0&limit=100', { credentials: 'include' });
@@ -152,10 +159,15 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
     assert.ok(loggedInHistory?.includes('BUY') && loggedInHistory.includes('SELL'));
 
     const dbTrades = await db.query(
-      'SELECT COUNT(*)::text AS count FROM spot_trades WHERE user_id = (SELECT id FROM users WHERE email = $1)',
+      `SELECT side, COUNT(*)::text AS count FROM spot_trades
+        WHERE user_id = (SELECT id FROM users WHERE email = $1)
+        GROUP BY side ORDER BY side`,
       [email]
     );
-    assert.equal(dbTrades.rows[0].count, '2', 'one BUY and one SELL should be persisted; retry must not duplicate BUY');
+    assert.deepEqual(dbTrades.rows, [
+      { side: 'BUY', count: '1' },
+      { side: 'SELL', count: '1' }
+    ], 'exactly one BUY and one SELL must persist; retry must not create a second BUY');
   } finally {
     if (browser) await browser.close();
     await app.close();
