@@ -74,6 +74,12 @@ async function main() {
     if (marketList.statusCode !== 200 || !marketList.json().markets.some((market: { marketId: string }) => market.marketId === 'apex-demo')) {
       throw new Error('Demo spot market was not seeded.');
     }
+    const initialMarket = marketList.json().markets.find((market: { marketId: string }) => market.marketId === 'apex-demo');
+    if (initialMarket.baseReserveMinor !== initialMarket.baseReserveLedgerMinor ||
+        initialMarket.quoteReserveMinor !== initialMarket.quoteReserveLedgerMinor ||
+        initialMarket.feeAccruedMinor !== '0') {
+      throw new Error('Initial API pool snapshot does not reconcile to the opening ledger.');
+    }
     const buyPayload = { marketId: 'apex-demo', side: 'BUY', amountMinor: '10000', maxSlippageBps: 1500 };
     const concurrentBuys = await Promise.all([
       app.inject({ method: 'POST', url: '/v1/spot/trades', headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' }, payload: buyPayload }),
@@ -87,6 +93,7 @@ async function main() {
       throw new Error('Spot trade virtual-only disclosure missing.');
     }
     const boughtBase = BigInt(buyBodies[0].amountOutMinor);
+    if (buyBodies.some(body => body.feeAccruedAfterMinor !== body.feeMinor)) throw new Error('BUY API response fee total is inconsistent.');
     if (boughtBase <= 0n) throw new Error('Spot buy did not credit base asset.');
 
     const assertPoolReconciles = async (label: string) => {
@@ -142,8 +149,8 @@ async function main() {
 
     const afterSell = await assertPoolReconciles('After SELL');
     const expectedFees = BigInt(buyBodies[0].feeMinor) + BigInt(sell.json().feeMinor);
-    if (BigInt(afterSell.fee_ledger_minor) !== expectedFees) {
-      throw new Error('BUY/SELL fee totals do not reconcile to fee revenue ledger.');
+    if (BigInt(afterSell.fee_ledger_minor) !== expectedFees || BigInt(sell.json().feeAccruedAfterMinor) !== expectedFees) {
+      throw new Error('BUY/SELL fee totals do not reconcile to fee revenue ledger and API response.');
     }
     const distinctConcurrentBuys = await Promise.all([
       app.inject({ method: 'POST', url: '/v1/spot/trades', headers: { cookie, 'idempotency-key': 'phase03-concurrent-buy-a' },
@@ -161,6 +168,13 @@ async function main() {
     const concurrentFees = distinctConcurrentBuys.reduce((sum, result) => sum + BigInt(result.json().feeMinor), 0n);
     if (BigInt(afterConcurrent.fee_ledger_minor) !== expectedFees + concurrentFees) {
       throw new Error('Concurrent BUY fees do not reconcile to fee revenue ledger.');
+    }
+    const finalMarketList = await app.inject({ method: 'GET', url: '/v1/spot/markets' });
+    const finalMarket = finalMarketList.json().markets.find((market: { marketId: string }) => market.marketId === 'apex-demo');
+    if (finalMarket.baseReserveMinor !== finalMarket.baseReserveLedgerMinor ||
+        finalMarket.quoteReserveMinor !== finalMarket.quoteReserveLedgerMinor ||
+        BigInt(finalMarket.feeAccruedMinor) !== BigInt(afterConcurrent.fee_ledger_minor)) {
+      throw new Error('Final API market snapshot differs from pool/fee ledger balances.');
     }
 
     const legacyClearing = await db.query(
