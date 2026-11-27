@@ -41,8 +41,9 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
     }
   }, (socket, request) => {
     socket.send(JSON.stringify({ type: 'connected', userId: request.apexUser!.id }));
-    socket.on('message', raw => {
-      if (raw.toString() === 'ping') socket.send(JSON.stringify({ type: 'pong', at: new Date().toISOString() }));
+    socket.on('message', (raw: unknown) => {
+      const message = typeof raw === 'string' ? raw : Buffer.isBuffer(raw) ? raw.toString() : '';
+      if (message === 'ping') socket.send(JSON.stringify({ type: 'pong', at: new Date().toISOString() }));
     });
   });
 
