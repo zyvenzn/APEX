@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
+import type { FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { resolveSession } from '../auth/session.js';
 import {
@@ -14,7 +15,7 @@ const tradeSchema = z.object({
   amountMinor: z.string().regex(/^\d+$/).max(19),
   maxSlippageBps: z.number().int().min(0).max(5000).default(1500)
 });
-function mapError(error: unknown, reply: { code: (status: number) => { send: (body: unknown) => unknown } }) {
+function mapError(error: unknown, reply: FastifyReply) {
   if (error instanceof SpotMarketNotFoundError) return reply.code(404).send({ error: 'MARKET_NOT_FOUND' });
   if (error instanceof SpotMarketPausedError) return reply.code(409).send({ error: 'MARKET_PAUSED' });
   if (error instanceof SpotInsufficientBalanceError) return reply.code(409).send({ error: 'INSUFFICIENT_BALANCE' });
