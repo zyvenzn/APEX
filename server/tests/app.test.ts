@@ -96,6 +96,10 @@ test('registration, session identity and logout work end-to-end through REST inj
   const sessionCookie = String(cookie).split(';')[0];
   assert.match(String(cookie), /HttpOnly/i);
   assert.match(String(cookie), /SameSite=Lax/i);
+  const registrationMe = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: sessionCookie } });
+  assert.equal(registrationMe.statusCode, 200);
+  const registrationLogout = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { cookie: sessionCookie } });
+  assert.equal(registrationLogout.statusCode, 204);
 
   const badLogin = await app.inject({
     method: 'POST', url: '/v1/auth/login',
