@@ -7,11 +7,14 @@ on:
       - fix/phase-00-build-ci-e2e
       - feat/phase-01-backend-foundation
       - feat/phase-02-simulation-ledger
+      - feat/phase-03-spot-market-engine
   pull_request:
     branches:
       - feat/bonding-curve-graduation-v1
       - fix/phase-00-build-ci-e2e
       - feat/phase-01-backend-foundation
+      - feat/phase-02-simulation-ledger
+      - feat/phase-03-spot-market-engine
   workflow_dispatch:
 
 permissions:

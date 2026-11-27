@@ -118,3 +118,24 @@ Example response amounts are integer minor-unit strings, never floating-point nu
 ### Phase 02 validation
 
 CI applies all versioned SQL migrations, then runs the PostgreSQL + Redis integration test. The ledger integration checks concurrent duplicate requests, idempotency, one-time claim enforcement, balance/history, balanced postings, and append-only protections.
+
+
+## Spot market engine (Phase 03)
+
+The backend spot engine is a deterministic virtual constant-product pool. It is separate from external DEX discovery data: no spot execution writes to a chain, external DEX, wallet, or real liquidity source.
+
+- The seeded `apex-demo` / `DEMO` pool is explicitly a simulator market. Base quantities use 9 decimal places; quote credits use 2 decimal places.
+- Pool reserves, fees, and execution amounts use integer `BIGINT` / `BigInt` arithmetic. The quote endpoint is indicative; execution recalculates under a PostgreSQL row lock.
+- Buy debits virtual quote credits and credits virtual base units. Sell debits virtual base units and credits virtual quote credits.
+- Each trade writes two independently balanced single-asset ledger journals in one database transaction, plus an immutable trade record and replay event.
+- Per-market row locks serialize reserve changes. User ledger accounts are locked in stable ID order. Insufficient balances, invalid amounts, paused markets, and slippage breaches reject without committing any state.
+- Trade requests require an `Idempotency-Key` (8–120 characters). Same-key/same-request replays the original result; same-key/different-request returns a conflict.
+- Slippage is an all-in execution-price deviation (including the pool fee) and is capped at 5,000 bps.
+
+### Spot API
+
+- `GET /v1/spot/markets` — simulator market list and reserve metadata.
+- `POST /v1/spot/quote` — indicative quote; body: `{ "marketId": "apex-demo", "side": "BUY", "amountMinor": "10000", "maxSlippageBps": 1500 }`.
+- `POST /v1/spot/trades` — authenticated execution; same body plus `Idempotency-Key` header.
+
+`amountMinor` means quote minor units for BUY and base minor units for SELL. API quantities and balances are integer strings. These endpoints do not connect the existing browser simulator yet; frontend migration and user-facing trade history are separate follow-up work.
