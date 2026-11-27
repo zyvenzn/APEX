@@ -1,0 +1,15 @@
+{
+  "name": "apex-trading-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "APEX social trading simulator prototype",
+  "scripts": {
+    "build": "node build.js",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "node tests/e2e.js",
+    "test:all": "npm run build && npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2"
+  }
+}
