@@ -110,6 +110,7 @@ All endpoints below require the authenticated `apex_session` cookie:
 
 - `GET /v1/ledger/balance` — authoritative virtual-credit balance (`balanceMinor` string).
 - `GET /v1/ledger/journals?limit=50&offset=0` — paginated journal and posting history.
+- `GET /v1/ledger/events?after=0&limit=100` — ordered event stream for replay/audit, using a monotonic sequence cursor.
 - `POST /v1/ledger/starter-credit` — one-time 10,000.00 virtual-credit grant. Requires an `Idempotency-Key` header (8–128 characters).
 
 Example response amounts are integer minor-unit strings, never floating-point numbers. The existing frontend has not yet been migrated to use these endpoints; localStorage state remains separate and is not authoritative for this backend ledger.
