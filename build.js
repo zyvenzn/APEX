@@ -16,9 +16,9 @@ const scriptAssets = [
 let html = read('index.html');
 const styleBlocks = html.match(/<style>[\s\S]*?<\/style>/g) || [];
 if (styleBlocks.length !== 1) {
-  throw new Error(\`Expected exactly one style block in index.html; found \${styleBlocks.length}\`);
+  throw new Error('Expected exactly one style block in index.html; found ' + styleBlocks.length);
 }
-html = html.replace(styleBlocks[0], \`<style>\n\${read('src/style.css')}\n</style>\`);
+html = html.replace(styleBlocks[0], '<style>\n' + read('src/style.css') + '\n</style>');
 
 for (const asset of scriptAssets) {
   let matches = 0;
@@ -26,10 +26,10 @@ for (const asset of scriptAssets) {
   html = html.replace(scriptPattern, (tag, before, src, after) => {
     if (src !== asset) return tag;
     matches++;
-    return \`<script data-apex-build="\${asset}">\n\${read(asset.slice(1))}\n</script>\`;
+    return '<script data-apex-build="' + asset + '">\n' + read(asset.slice(1)) + '\n</script>';
   });
   if (matches !== 1) {
-    throw new Error(\`Expected exactly one build marker for \${asset}; found \${matches}\`);
+    throw new Error('Expected exactly one build marker for ' + asset + '; found ' + matches);
   }
 }
 
@@ -41,4 +41,4 @@ fs.writeFileSync(path.join(root, 'index.html'), html);
 const outputDir = path.join(root, 'public');
 fs.mkdirSync(outputDir, { recursive: true });
 fs.writeFileSync(path.join(outputDir, 'index.html'), html);
-console.log(\`Built index.html and public/index.html with \${scriptAssets.length} JavaScript assets and src/style.css\`);
+console.log('Built index.html and public/index.html with ' + scriptAssets.length + ' JavaScript assets and src/style.css');
