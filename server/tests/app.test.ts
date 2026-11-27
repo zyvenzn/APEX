@@ -144,3 +144,17 @@ test('mutating requests reject foreign Origin and Referer values', async () => {
   assert.equal(badReferer.statusCode, 403);
   await app.close();
 });
+
+test('production mutating requests require the configured Origin', async () => {
+  const strictConfig = { ...config, NODE_ENV: 'production', COOKIE_SECURE: true } as AppConfig;
+  const db = { query: async () => ({ rows: [], rowCount: 0 }), end: async () => undefined };
+  const app = await buildApp({ config: strictConfig, db: db as never });
+  const missing = await app.inject({ method: 'POST', url: '/v1/auth/logout' });
+  assert.equal(missing.statusCode, 403);
+  assert.equal(missing.json().error, 'CSRF_ORIGIN_REQUIRED');
+  const allowed = await app.inject({
+    method: 'POST', url: '/v1/auth/logout', headers: { origin: 'http://localhost:3000' }
+  });
+  assert.equal(allowed.statusCode, 204);
+  await app.close();
+});
