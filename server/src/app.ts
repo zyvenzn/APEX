@@ -5,7 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import type { AppConfig } from './config.js';
 import type { Pool } from 'pg';
-import type { Cache, Database } from './db/pool.js';
+import type { Cache } from './db/pool.js';
 import { resolveSession } from './auth/session.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerLedgerRoutes } from './routes/ledger.js';
