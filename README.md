@@ -156,5 +156,23 @@ The frontend now contains a dedicated backend Spot panel for the seeded `apex-de
 The UI calls `GET /v1/spot/markets`, `POST /v1/spot/quote`, `POST /v1/spot/trades`, `GET /v1/ledger/balance`, and paginated `GET /v1/ledger/events`. A pending order retains the same `Idempotency-Key` across network retries for the identical order payload. Portfolio balances and trade history are rendered from ledger data; the legacy prototype portfolio remains explicitly labelled as local demo data.
 
 For production cross-origin cookies, the API sets `SameSite=None; Secure`. Some browsers or privacy settings block third-party cookies regardless; a same-site custom domain or same-origin reverse proxy is the most reliable deployment arrangement. The API is not deployed by this code change, so configure a reachable API origin before expecting live backend trading. The Backend Ledger Portfolio is server-backed PostgreSQL data; legacy simulator positions remain localStorage-only demo data and are not combined.
+ 
+### Staging safety and export
+Treat a free Render PostgreSQL instance as disposable test infrastructure, not durable storage. Before its expiry or any reset, export it from a trusted machine with PostgreSQL client tools:
+
+\`\`\`sh
+pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl --file="apex-staging-$(date -u +%Y%m%dT%H%M%SZ).dump"
+\`\`\`
+
+Restore into a separate target database only after checking the destination:
+
+\`\`\`sh
+pg_restore --dbname "$TARGET_DATABASE_URL" --clean --if-exists --no-owner --no-acl --single-transaction apex-staging-backup.dump
+\`\`\`
+
+Do not place database URLs or dumps in Git. Keep the staging API to one instance: current Fastify rate limits use process memory and are not shared across replicas. Redis is intentionally absent because no current application path needs it; introduce a shared limiter only before scaling beyond one instance.
+
+The audit branch includes a lockfile-refresh workflow. It regenerates \`package-lock.json\` from the pinned manifest, then verifies \`npm ci\` and runs the full validation suite.
+
 
 All orders remain simulated. No wallet signing, real deposits, blockchain transactions, or external DEX writes are performed. The frontend refreshes market snapshots by HTTP polling; the existing WebSocket endpoint does not yet publish market broadcasts.
