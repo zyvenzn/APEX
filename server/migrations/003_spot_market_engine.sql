@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS spot_trades (
   request_hash char(64) NOT NULL CHECK (request_hash ~ '^[0-9a-f]{64}$'),
   side varchar(4) NOT NULL CHECK (side IN ('BUY', 'SELL')),
   amount_minor bigint NOT NULL CHECK (amount_minor > 0),
-  result jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT spot_trades_user_idempotency_unique UNIQUE (user_id, idempotency_key)
 );
@@ -29,3 +28,8 @@ INSERT INTO spot_markets
 VALUES
   ('apex-demo', 'DEMO', 'APEX_DEMO', 'APEX_CREDIT', 1000000000000, 1000000000, 9, 2, 50)
 ON CONFLICT (market_id) DO NOTHING;
+
+DROP TRIGGER IF EXISTS spot_trades_immutable ON spot_trades;
+CREATE TRIGGER spot_trades_immutable
+BEFORE UPDATE OR DELETE ON spot_trades
+FOR EACH ROW EXECUTE FUNCTION apex_reject_ledger_mutation();
