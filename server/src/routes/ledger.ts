@@ -38,7 +38,7 @@ export async function registerLedgerRoutes(app: FastifyInstance, deps: { db: Poo
     const user = await resolveSession(request, deps.db);
     if (!user) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
     const query = z.object({
-      after: z.string().regex(/^\\d+$/).default('0'),
+      after: z.string().regex(/^\d+$/).default('0'),
       limit: z.coerce.number().int().min(1).max(500).default(100)
     }).safeParse(request.query);
     if (!query.success) return reply.code(400).send({ error: 'INVALID_CURSOR' });
