@@ -80,3 +80,18 @@ test('router rejects an incomplete persisted graduation snapshot and reconstruct
   const account={cash:10,positions:{}};
   assert.ok(router.executeBuy('CURVE',account,0.1,1).quantity>0);
 });
+
+test('router graduates a restored bonding snapshot already above its target',()=>{
+  const {pools,router:seedRouter}=setup();
+  const saved=seedRouter.serialize();
+  saved.CURVE.baseReserve=1_000;
+  saved.CURVE.quoteReserve=10;
+  saved.CURVE.circulatingSupply=10_000_000;
+  saved.CURVE.status='BONDING';
+  saved.CURVE.ammPool=null;
+  saved.CURVE.graduation=null;
+  const restored=Router.createRouter({amm:Amm,curve:Curve,pools,bondingIds:['CURVE'],savedMarkets:saved});
+  assert.equal(restored.isGraduated('CURVE'),true);
+  assert.equal(restored.market('CURVE').ammPool.status,'ACTIVE');
+  assert.equal(restored.progress('CURVE'),100);
+});
