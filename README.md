@@ -1,24 +1,41 @@
 # Apex Trading Hub
 
-Prototype web app (token and perps trading UI) with simulated markets.
-Single static page: `index.html` is self-contained (CSS, JS and images inlined).
-All prices, traders and balances are demo data. No real funds are involved.
+APEX is a browser-based social trading simulator prototype. Prices, traders, balances and trades are simulated demo data; no real funds or blockchain transactions are involved.
 
-## Run
-Open `index.html` in a browser, or deploy the folder to any static host (Vercel, GitHub Pages).
+## Run locally
+
+The repository keeps readable source files under `src/`. To generate the self-contained static page:
+
+```sh
+npm install
+npm run build
+```
+
+Then open `index.html` in a browser or serve the repository folder with any static file server. The build step inlines the maintained CSS and JavaScript modules into `index.html`; it is safe to run repeatedly.
 
 ## Develop
-Edit `src/app.js` and `src/style.css`, then inline them into `index.html`:
 
-    node build.js
+- Edit application logic in `src/app.js`.
+- Edit styles in `src/style.css`.
+- Edit market modules under `src/`.
+- Run `npm run build` after source changes to refresh the standalone `index.html`.
 
-## Test
-Needs [Playwright](https://playwright.dev). Run after building:
+## Tests
 
-    node tests/e2e.js
-    CHROME_PATH=/usr/bin/google-chrome node tests/e2e.js   # use an installed Chrome
+Node.js 22 or newer is recommended.
+
+```sh
+npm install
+npm test
+npx playwright install chromium
+npm run build
+npm run test:e2e
+```
+
+The unit suite uses Node's built-in test runner. Browser E2E tests use the pinned Playwright development dependency and Chromium. In CI, Chromium is installed with its system dependencies.
 
 ## Simulation rules
+
 These are simplified and do not reproduce any real exchange.
 
 | Item | Rule |
