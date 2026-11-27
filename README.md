@@ -87,7 +87,7 @@ npm run test:api:integration
 npm run test:api:browser
 ```
 
-The migration runner is explicit; it does not mutate a database during application startup. Use a dedicated database and review migrations before applying them. The integration smoke test expects the PostgreSQL service from Docker Compose to be running.
+The migration runner is explicit; it does not mutate a database during application startup. It verifies `EXPECTED_DATABASE_NAME` and `EXPECTED_DATABASE_USER` against PostgreSQL before applying DDL, then takes a session-level advisory lock on the dedicated migration connection. The integration smoke tests expect PostgreSQL to be running.
 
 ### Current Phase 01 boundary
 
@@ -177,3 +177,23 @@ The audit branch includes a lockfile-refresh workflow. It regenerates `package-l
 
 
 All orders remain simulated. No wallet signing, real deposits, blockchain transactions, or external DEX writes are performed. The frontend refreshes market snapshots by HTTP polling; the existing WebSocket endpoint does not yet publish market broadcasts.
+
+
+## Database safety and staging identity
+
+Every backend and migration process must set these two expected-identity variables; they are independent of `NODE_ENV` and are compared with PostgreSQL `current_database()` and `current_user`:
+
+```sh
+EXPECTED_DATABASE_NAME=apex
+EXPECTED_DATABASE_USER=apex
+```
+
+For staging, set them to the exact database name and dedicated database role shown by the staging PostgreSQL instance, for example `EXPECTED_DATABASE_NAME=apex_staging` and `EXPECTED_DATABASE_USER=apex_staging_user`. Set `DATABASE_URL` to that same staging database's **internal** connection URL. Never reuse production credentials or a production connection URL in staging. A mismatch fails closed with a safe error that does not print `DATABASE_URL`.
+
+The migration runner uses PostgreSQL session advisory lock `(1095781720, 1)`: namespace `0x41504558` (`APEX`) and key `1`. The lock is held on the same dedicated connection from before the migration transaction until after commit/rollback. PostgreSQL releases it if the connection dies; the runner explicitly unlocks it on success and failure. Do not change this key without coordinating all migration executors.
+
+Migrations remain an explicit one-shot operation (`npm run migrate`), not a backend startup hook. The runner checks expected database identity before lock acquisition and DDL. The API repeats the identity check before binding its HTTP port.
+
+## Render Static Site build
+
+The root `npm run build` runs `build.js`, which writes both the standalone root `index.html` and `public/index.html`, then runs `scripts/verify-static-build.mjs`. The verifier checks that the publish artifact exists, matches the root bundle, contains the Backend Spot API configuration/integration markers, and has no remaining local `/src/` script references. Configure a Render Static Site with root directory `.`, build command `npm ci --include=dev && npm run build`, and publish directory `public`.

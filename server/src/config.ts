@@ -5,6 +5,8 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   DATABASE_URL: z.string().url(),
+  EXPECTED_DATABASE_NAME: z.string().trim().min(1),
+  EXPECTED_DATABASE_USER: z.string().trim().min(1),
   APP_ORIGIN: z.string().url().default('http://localhost:3000'),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(168),
   COOKIE_SECURE: z.enum(['true', 'false']).default('false').transform(v => v === 'true')

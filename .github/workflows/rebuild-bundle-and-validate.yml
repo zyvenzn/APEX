@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - fix/pre-staging-audit-reconciliation-security
+      - fix/staging-db-safety-static-build
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rebuild-and-validate:
@@ -15,6 +16,8 @@ jobs:
     env:
       NODE_ENV: test
       DATABASE_URL: postgres://apex:apex_dev_password@localhost:5432/apex
+      EXPECTED_DATABASE_NAME: apex
+      EXPECTED_DATABASE_USER: apex
       APP_ORIGIN: http://localhost:3000
       COOKIE_SECURE: "false"
     services:
@@ -34,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/pre-staging-audit-reconciliation-security
+          ref: ${{ github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -64,8 +67,12 @@ jobs:
           npm run test:api
       - name: Database migrations
         run: npm run migrate
+      - name: Database identity guard tests
+        run: npm run test:api:identity
       - name: PostgreSQL integration and reconciliation
         run: npm run test:api:integration
+      - name: Migration concurrency and lock-release integration test
+        run: npm run test:api:migrations
       - name: Browser E2E
         run: |
           npx playwright install --with-deps chromium
