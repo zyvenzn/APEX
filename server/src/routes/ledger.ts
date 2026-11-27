@@ -6,6 +6,7 @@ import {
   claimStarterCredits,
   getCreditBalance,
   getLedgerHistory,
+  getLedgerEvents,
   IdempotencyConflictError,
   StarterCreditAlreadyClaimedError,
   ledgerConstants
@@ -31,6 +32,18 @@ export async function registerLedgerRoutes(app: FastifyInstance, deps: { db: Poo
     if (!query.success) return reply.code(400).send({ error: 'INVALID_PAGINATION' });
     const journals = await getLedgerHistory(deps.db, user.id, query.data.limit, query.data.offset);
     return reply.send({ journals });
+  });
+
+  app.get('/v1/ledger/events', async (request, reply) => {
+    const user = await resolveSession(request, deps.db);
+    if (!user) return reply.code(401).send({ error: 'UNAUTHENTICATED' });
+    const query = z.object({
+      after: z.coerce.number().int().min(0).default(0),
+      limit: z.coerce.number().int().min(1).max(500).default(100)
+    }).safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ error: 'INVALID_CURSOR' });
+    const events = await getLedgerEvents(deps.db, user.id, query.data.after, query.data.limit);
+    return reply.send({ events, nextAfter: events.length ? Number(events[events.length - 1].sequenceId) : query.data.after });
   });
 
   app.post('/v1/ledger/starter-credit', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
