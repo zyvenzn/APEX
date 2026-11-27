@@ -1524,6 +1524,12 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
 
   // The UI only exposes the backend-seeded DEMO market; prototype markets stay local.
   const CONFIG_KEY = 'apex-backend-api-base-v1';
+  const PENDING_TRADE_KEY = 'apex-pending-spot-trades-v1';
+  const pendingTradeKeys = new Map();
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PENDING_TRADE_KEY) || '{}');
+    Object.entries(saved).forEach(([fingerprint, idempotencyKey]) => pendingTradeKeys.set(fingerprint, idempotencyKey));
+  } catch (_) { /* session storage is optional; in-memory retry remains available */ }
   let apiBase = (localStorage.getItem(CONFIG_KEY) || '').replace(/\/+$/, '');
   let market = null;
   let markets = [];
@@ -1539,11 +1545,38 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
   const money = value => '$' + Number(value || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const units = (minor, decimals) => Number(BigInt(minor || '0')) / Math.pow(10, decimals);
   const key = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'apex-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  function persistPendingTradeKeys() {
+    try { sessionStorage.setItem(PENDING_TRADE_KEY, JSON.stringify(Object.fromEntries(pendingTradeKeys))); }
+    catch (_) { /* in-memory map still protects retries until this page is closed */ }
+  }
+  function pendingTradeKey(payload) {
+    const fingerprint = JSON.stringify(payload);
+    let idempotencyKey = pendingTradeKeys.get(fingerprint);
+    if (!idempotencyKey) {
+      idempotencyKey = key();
+      pendingTradeKeys.set(fingerprint, idempotencyKey);
+      persistPendingTradeKeys();
+    }
+    return {fingerprint, idempotencyKey};
+  }
+  function clearPendingTradeKey(fingerprint) {
+    pendingTradeKeys.delete(fingerprint);
+    persistPendingTradeKeys();
+  }
 
   async function request(path, options = {}) {
     const headers = Object.assign({}, options.headers || {});
     if (options.body) headers['content-type'] = 'application/json';
-    const response = await fetch(endpoint(path), Object.assign({}, options, {headers, credentials:'include'}));
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+    let response;
+    try {
+      response = await fetch(endpoint(path), Object.assign({}, options, {
+        headers, credentials:'include', signal:controller.signal
+      }));
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
     if (response.status === 204) return null;
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -1703,13 +1736,13 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
     const assets = '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #242438"><span>APEX_CREDIT <small class="mut">Virtual cash</small></span><b>' + money(credit()) + '</b></div>' +
       '<div style="display:flex;justify-content:space-between;padding:9px 0"><span>' + esc(market?.symbol || 'DEMO') + ' <small class="mut">Simulated asset</small></span><b>' + demoQty.toLocaleString('en-US',{maximumFractionDigits:9}) + ' <small class="mut">≈ ' + money(demoQty*price) + '</small></b></div>';
     panel.innerHTML =
-      '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">Backend portfolio</b><span class="tag">LEDGER SOURCE OF TRUTH</span><button class="ibtn" style="margin-left:auto" data-apex-action="refresh" aria-label="Refresh">↻</button></div>' +
+      '<div style="display:flex;align-items:center;gap:8px"><b style="font-size:16px">Backend Ledger Portfolio</b><span class="tag">SERVER DATA</span><button class="ibtn" style="margin-left:auto" data-apex-action="refresh" aria-label="Refresh">↻</button></div>' +
       '<div class="mut" style="font-size:11px;margin-top:4px">Authenticated as ' + esc(user.displayName || user.email) + ' · Balances reconstructed from immutable ledger events</div>' +
       '<div style="margin-top:10px">' + assets + '</div>' +
       (credit() <= 0 ? '<button class="btn pri block" style="margin-top:10px" data-apex-action="claim">Claim one-time 10,000 virtual credits</button>' : '') +
       '<div style="font-weight:700;margin-top:16px">Backend trade history</div>' +
       (history || '<div class="mut" style="padding:12px 0;font-size:12px">No backend spot trades yet.</div>') +
-      '<div class="mut" style="font-size:10px;margin-top:8px">This panel is ledger-backed. Legacy prototype positions elsewhere on this page remain local demo data.</div>';
+      '<div class="mut" style="font-size:10px;margin-top:8px">SOURCE: backend PostgreSQL ledger. This balance and trade history are separate from legacy localStorage simulator positions, which remain local demo data and are not included here.</div>';
   }
 
   function tradeModal(side, message = '') {
@@ -1772,16 +1805,24 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
       busy = true;
       const button = $('[data-apex-action="execute"]');
       if (button) { button.disabled = true; button.textContent = 'Executing…'; }
+      const payload = {marketId:market.marketId,side,amountMinor,maxSlippageBps:1500};
+      const pending = pendingTradeKey(payload);
       const result = await request('/v1/spot/trades', {
         method:'POST',
-        headers:{'idempotency-key':key()},
-        body:JSON.stringify({marketId:market.marketId,side,amountMinor,maxSlippageBps:1500})
+        headers:{'idempotency-key':pending.idempotencyKey},
+        body:JSON.stringify(payload)
       });
-      await loadMarkets();
-      await loadLedger();
+      clearPendingTradeKey(pending.fingerprint);
       closeModal();
       toast((result.replayed ? 'Recovered' : 'Executed') + ' simulated ' + side.toLowerCase() + ' trade. Ledger updated.');
+      await Promise.allSettled([loadMarkets(), loadLedger()]);
     } catch (error) {
+      // A network failure or 5xx can happen after the database commits. Keep the
+      // fingerprint -> key mapping so retrying the same order safely replays it.
+      if (error.status && error.status >= 400 && error.status < 500) {
+        const amountMinor = input ? toMinor(input.value, side === 'BUY' ? market.quoteDecimals : market.baseDecimals) : '';
+        clearPendingTradeKey(JSON.stringify({marketId:market.marketId,side,amountMinor,maxSlippageBps:1500}));
+      }
       if (error.status === 401) { user = null; authModal('login', 'Session expired. Sign in again.'); }
       else if (errorBox) errorBox.textContent = error.message;
       else toast(error.message, true);
