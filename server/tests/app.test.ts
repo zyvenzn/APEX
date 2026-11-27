@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp } from '../src/app.js';
 import type { AppConfig } from '../src/config.js';
+import { hashSessionToken } from '../src/auth/crypto.js';
 
 const config = {
   NODE_ENV: 'test', HOST: '127.0.0.1', PORT: 3001,
@@ -47,5 +48,61 @@ test('readiness returns 503 when a dependency is unavailable', async () => {
   const response = await app.inject({ method: 'GET', url: '/v1/health/ready' });
   assert.equal(response.statusCode, 503);
   assert.equal(response.json().status, 'degraded');
+  await app.close();
+});
+
+test('registration, session identity and logout work end-to-end through REST injection', async () => {
+  let user: Record<string, unknown> | null = null;
+  let passwordHash = '';
+  const sessions = new Set<string>();
+  const db = {
+    query: async (sql: string, params: unknown[] = []) => {
+      if (sql.includes('INSERT INTO users')) {
+        user = { id: 'user-1', email: params[0], displayName: params[2], createdAt: new Date().toISOString() };
+        passwordHash = String(params[1]);
+        return { rows: [user], rowCount: 1 };
+      }
+      if (sql.includes('INSERT INTO auth_sessions')) {
+        sessions.add(String(params[0]));
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes('FROM auth_sessions s')) {
+        const exists = sessions.has(String(params[0]));
+        return { rows: exists && user ? [user] : [], rowCount: exists && user ? 1 : 0 };
+      }
+      if (sql.includes('DELETE FROM auth_sessions')) {
+        sessions.delete(String(params[0]));
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql === 'SELECT 1') return { rows: [{ '?column?': 1 }], rowCount: 1 };
+      throw new Error('Unexpected test query: ' + sql);
+    },
+    end: async () => undefined
+  };
+  const redis = { ping: async () => 'PONG', quit: async () => 'OK', connect: async () => undefined };
+  const app = await buildApp({ config, db: db as never, redis: redis as never });
+
+  const registered = await app.inject({
+    method: 'POST', url: '/v1/auth/register',
+    payload: { email: 'Test@Example.com', password: 'correct-horse-battery', displayName: 'Test User' }
+  });
+  assert.equal(registered.statusCode, 201);
+  assert.equal(registered.json().user.email, 'test@example.com');
+  assert.ok(passwordHash.startsWith('scrypt:'));
+  const cookie = registered.headers['set-cookie'];
+  assert.ok(cookie);
+  const sessionCookie = String(cookie).split(';')[0];
+  assert.match(String(cookie), /HttpOnly/i);
+  assert.match(String(cookie), /SameSite=Lax/i);
+
+  const me = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: sessionCookie } });
+  assert.equal(me.statusCode, 200);
+  assert.equal(me.json().user.id, 'user-1');
+
+  const loggedOut = await app.inject({ method: 'POST', url: '/v1/auth/logout', headers: { cookie: sessionCookie } });
+  assert.equal(loggedOut.statusCode, 204);
+  const afterLogout = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie: sessionCookie } });
+  assert.equal(afterLogout.statusCode, 401);
+  assert.equal(sessions.size, 0);
   await app.close();
 });
