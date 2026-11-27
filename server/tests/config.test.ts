@@ -5,7 +5,6 @@ import { loadConfig } from '../src/config.js';
 const valid = {
   NODE_ENV: 'test',
   DATABASE_URL: 'postgres://apex:secret@localhost:5432/apex',
-  REDIS_URL: 'redis://localhost:6379',
   APP_ORIGIN: 'http://localhost:3000'
 };
 
@@ -15,7 +14,7 @@ test('loads validated server configuration', () => {
   assert.equal(config.COOKIE_SECURE, false);
 });
 
-test('rejects missing database and redis configuration', () => {
+test('rejects missing database configuration', () => {
   assert.throws(() => loadConfig({ NODE_ENV: 'test' }), /Invalid server configuration/);
 });
 
