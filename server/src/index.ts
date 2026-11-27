@@ -1,6 +1,6 @@
 import { loadConfig } from './config.js';
 import { buildApp } from './app.js';
-import { createPool } from './db/pool.js'
+import { createPool } from './db/pool.js';
 
 async function main() {
   const config = loadConfig();
