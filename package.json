@@ -12,7 +12,8 @@
     "start:api": "node server/dist/index.js",
     "build:api": "tsc -p server/tsconfig.json",
     "migrate": "tsx server/src/db/migrate.ts",
-    "test:api": "tsx --test server/tests/*.test.ts"
+    "test:api": "tsx --test server/tests/*.test.ts",
+    "test:api:integration": "tsx server/tests/integration.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.1",
