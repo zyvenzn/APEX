@@ -46,17 +46,22 @@ function addP(sym,lev,price,vol,chg){const id='p:'+sym;const t={id,sym,name:sym,
 const LISTS={crypto:['BTC','ANT','ETH','XRP','BNB','HYPE','SOL','TRX','WLFI','ZEC','LINK'],trending:['BASKET','GTA6','Rings','ANSEM','Huss','ANT2','GANG','SI','shiit','DCTY','NIO','KNTO'],held:['CATE','STONK','AI','PONS','MASK','SOL','ZCAT','USELESS','MARSCOIN','SI2','CLAUDIA','CARDS'],grad:['BILLI','MEME','JOE','BOOSTER','pipi','OUROBOROS','Helipad','SPCXC','JaoJiu','莫达','PERRO','TELEFROID'],bond:['VEXDIAL','PnL','MOOT','Legatum','MIS','bon','CursedBob','xmascoin','青鬼','SHEEPCOIN','INUF','FRANK'],gain:['BONER','UwU','AEON','SURPLUS','uPEG','GTA6','OPG','VINE','LMTS','MAX','ZCAT','BP'],comm:['SOL','PONS','MET','DRV','RAY','CARDS','JUP','ASTER','MON','STONK','CLAUDIA']};
 const GRADUATION_MC=69000,BOND_IDS=new Set(LISTS.bond),LEDGER_KEY='apex-market-ledger-v2';
 const bondingProgress=t=>Math.max(0,Math.min(100,t.mc/GRADUATION_MC*100));
-function graduateToken(t){if(!t||t.kind!=='token'||!BOND_IDS.has(t.id)||t.graduated)return false;t.graduated=true;t.bond=100;LISTS.bond=LISTS.bond.filter(id=>id!==t.id);if(!LISTS.grad.includes(t.id))LISTS.grad.unshift(t.id);return true}
-function reconcileGraduation(t){if(t&&BOND_IDS.has(t.id)&&!t.graduated&&SPOT_ROUTER?.isGraduated(t.id))graduateToken(t)}
-function reconcileAllGraduations(){for(const id of [...LISTS.bond]){const t=DB[id];if(t)reconcileGraduation(t)}saveMarketLedger()}
+function graduateToken(t){if(!t||t.kind!=='token'||!BOND_IDS.has(t.id))return false;t.graduated=true;t.bond=100;LISTS.bond=LISTS.bond.filter(id=>id!==t.id);if(!LISTS.grad.includes(t.id))LISTS.grad.unshift(t.id);return true}
+function reconcileGraduation(t){if(!t||!BOND_IDS.has(t.id)||!SPOT_ROUTER)return false;if(SPOT_ROUTER.isGraduated(t.id))return graduateToken(t);t.graduated=false;t.bond=SPOT_ROUTER.progress(t.id);LISTS.grad=LISTS.grad.filter(id=>id!==t.id);if(!LISTS.bond.includes(t.id))LISTS.bond.push(t.id);return false}
+function reconcileAllGraduations(){for(const id of BOND_IDS){const t=DB[id];if(t)reconcileGraduation(t)}saveMarketLedger()}
 const CHIPS=[['crypto','Crypto'],['trending','Trending'],['held','Most held'],['grad','Graduated'],['bond','Bonding'],['gain','Gainers'],['comm','Community']];
-function seedHist(t){const r=rng(hash(t.id));const a=[];let p=t.p;const v=t.vola*3;for(let i=0;i<90;i++){a.unshift(p);p=p/(1+(r()-.5)*2*v+(t.chg>0?-.0004:.0004))}t.h=a}
+function seedHist(t){t.h=[t.p]}
+const CHART_HISTORY_KEY='apex-market-chart-v1',CHART_POINTS={};
+try{const saved=JSON.parse(localStorage.getItem(CHART_HISTORY_KEY)||'{}');for(const [id,rows] of Object.entries(saved)){if(DB[id]&&Array.isArray(rows))CHART_POINTS[id]=rows.filter(p=>p&&Number.isFinite(p.ts)&&Number.isFinite(p.price)&&p.price>0).slice(-5000)}}catch(e){}
+function recordMarketPoint(t){if(!t||t.kind!=='token'||!Number.isFinite(t.p)||t.p<=0)return;const rows=CHART_POINTS[t.id]||(CHART_POINTS[t.id]=[]),now=Date.now(),last=rows[rows.length-1];if(last&&last.price===t.p&&now-last.ts<1000)return;rows.push({ts:now,price:t.p});if(rows.length>5000)rows.splice(0,rows.length-5000);t.h=t.h||[];t.h.push(t.p);if(t.h.length>90)t.h.shift()}
+function saveChartHistory(){try{localStorage.setItem(CHART_HISTORY_KEY,JSON.stringify(CHART_POINTS))}catch(e){}}
 const MKT='apex-demo-mkt-v1';
 (()=>{let m;try{m=JSON.parse(localStorage.getItem(MKT))}catch(e){}if(!m)return;for(const t of ALL){const v=m[t.id];if(t.dead||!v||!(v[0]>0&&isFinite(v[0]))||!(v[1]>0&&isFinite(v[1])))continue;t.p=v[0];t.base=v[1];if(t.kind==='token')t.mc=t.mc0*(t.p/t.p0);t.chg=(t.p/t.base-1)*100}})();
 let wiping=false;
-const saveMkt=()=>{if(wiping)return;try{localStorage.setItem(MKT,JSON.stringify(Object.fromEntries(ALL.filter(t=>!t.dead).map(t=>[t.id,[t.p,t.base]]))));localStorage.setItem(SPOT_POOL_KEY,JSON.stringify(SPOT_POOLS));localStorage.setItem(BOND_MARKET_KEY,JSON.stringify(SPOT_ROUTER.serialize()))}catch(e){}saveMarketLedger();}
+const saveMkt=()=>{if(wiping)return;try{localStorage.setItem(MKT,JSON.stringify(Object.fromEntries(ALL.filter(t=>!t.dead).map(t=>[t.id,[t.p,t.base]]))));localStorage.setItem(SPOT_POOL_KEY,JSON.stringify(SPOT_POOLS));localStorage.setItem(BOND_MARKET_KEY,JSON.stringify(SPOT_ROUTER.serialize()));saveChartHistory()}catch(e){}saveMarketLedger();}
 window.addEventListener('pagehide',saveMkt);
 ALL.forEach(seedHist);
+for(const id of BOND_IDS){const t=DB[id];if(t){reconcileGraduation(t);recordMarketPoint(t)}}
 /* ---------- traders ---------- */
 const TN=['YetzerHaraTrap','0xForgivable','Aurelius','Killer','kv4rl','ColossalResurrection','leo','thinvalue','0xFalcs','Visi235','TightHarshYak','ProdigyNelson','lyleprat','IceSlayerMan','OmakaseOnly','econoar','moom123','jaqs','stashersaber','BIGWILL52','magif','malloc_eth','prevaile','VIBritania','babatooonde','tjr','PoorGoat_','s0m3','MambaKing245','end837','NFThashler','Fytcho Trades','TEEK420','Spacetime','Dazzle Novak','curb','pd','macfeurson','Pocket Change','derek.eth','The Night Owl','Bug','Marvolo','HugeWIN','SpicyRipeClam','gatsby','DopamineFeenFr1','lordarbiter','Lingönberry Capital','Binkieee','Jols','TheSOLstice','Salem','cosby','Qwerty','Lasercat397','Wood','dryflip'];
 const tAv=(n,s=36)=>{if(n===S.user.username&&!TR[n])return `<span class="av" style="width:${s}px;height:${s}px;background:#171724"><img src="${esc(S.user.avatar||IMG.AVATAR)}" alt=""></span>`;
@@ -97,7 +102,7 @@ const maxSlip=()=>(S.qt.auto?15:S.qt.slip)/100;
 const spotPool=t=>SPOT_ROUTER.activePool(t.id)||SPOT_POOLS[t.id];
 const quoteBuy=(t,amt)=>{const q=SPOT_ROUTER.quoteBuy(t.id,amt);return {...q,px:q.executionPrice,qty:q.quantity,move:q.priceAfter/q.priceBefore}};
 const quoteSell=(t,qty)=>{const q=SPOT_ROUTER.quoteSell(t.id,qty);return {...q,out:q.output,move:q.priceAfter/q.priceBefore}};
-function movePrice(t){if(t.dead)return;const p=spotPool(t);if(!p)return;t.p=SPOT_ROUTER.price(t.id);t.mc=SPOT_ROUTER.marketCap(t.id);t.chg=(t.p/t.base-1)*100;reconcileGraduation(t)}
+function movePrice(t){if(t.dead)return;const p=spotPool(t);if(!p)return;t.p=SPOT_ROUTER.price(t.id);t.mc=SPOT_ROUTER.marketCap(t.id);t.chg=(t.p/t.base-1)*100;reconcileGraduation(t);recordMarketPoint(t)}
 const mmr=t=>1/(2*t.lev);
 const liqPx=(entry,lev,side,t)=>{const d=side==='long'?1:-1;return entry*(lev-d)/(lev*(1-d*mmr(t)))};
 const isLiq=p=>{const t=DB[p.id],d=p.side==='long'?1:-1;return d*(t.p-liqPx(p.entry,p.lev,p.side,t))<=0};
@@ -276,12 +281,7 @@ return pgSettings([])}
 Object.assign(UI,{tf:null,tTab:'holders',tType:'candle',tHold:false,tThes:false,txOpen:true,abTf:'1H'});
 const TFS=['LIVE','1H','4H','1D','7D','ALL'];
 const TFM={LIVE:1,'1H':3,'4H':6,'1D':12,'7D':25,ALL:60};
-function candles(t,tf){t._c=t._c||{};const key=tf;if(t._c[key])return t._c[key];const r=rng(hash(t.id+tf));const N=40;const cs=[];
-if(t.dead){const lv=[];let cur=t.p*(120+r()*160);for(let i=0;i<N;i++){if(i<7)cur*=.5+r()*.2;else if(i<N*.65&&r()<.2)cur*=.45+r()*.3;if(i>=N*.68)cur=t.p;lv.push(Math.max(cur,t.p))}lv[N-1]=t.p;
-for(let i=0;i<N;i++){const o=i?lv[i-1]:lv[0]*1.15,c=lv[i];const flat=o===c&&c===t.p;cs.push({o,c,h:flat?c:Math.max(o,c)*(1+r()*.05),l:flat?c:Math.min(o,c)*(1-r()*.03)})}}
-else{const v=t.vola*Math.sqrt(TFM[tf])*1.6;const cl=new Array(N);cl[N-1]=t.p;const dr=(t.chg>0?-1:1)*.0006*Math.sqrt(TFM[tf]);for(let i=N-1;i>0;i--)cl[i-1]=Math.max(cl[i]/(1+(r()-.5)*2*v+dr),1e-12);
-for(let i=0;i<N;i++){const o=i?cl[i-1]:cl[0]/(1+(r()-.5)*v),c=cl[i];cs.push({o,c,h:Math.max(o,c)*(1+r()*v*.6),l:Math.min(o,c)*(1-r()*v*.6)})}}
-return t._c[key]=cs}
+function candles(t,tf){const now=Date.now(),ranges={LIVE:[15*60*1000,15*1000],'1H':[60*60*1000,60*1000],'4H':[4*60*60*1000,5*60*1000],'1D':[24*60*60*1000,30*60*1000],'7D':[7*24*60*60*1000,4*60*60*1000],ALL:[0,24*60*60*1000]},[windowMs,baseInterval]=ranges[tf]||ranges.LIVE;let intervalMs=baseInterval,points=(CHART_POINTS[t.id]||[]).slice();if(windowMs)points=points.filter(p=>p.ts>=now-windowMs);if(!points.length)points=[{ts:now,price:t.p}];if(tf==='ALL'&&points.length>40){const span=Math.max(1,points[points.length-1].ts-points[0].ts);intervalMs=Math.max(intervalMs,Math.ceil(span/40))}const bars=window.ApexMarketChart.buildCandles(points,{intervalMs,limit:40});const last=bars[bars.length-1];if(last&&Number.isFinite(t.p)){last.c=t.p;last.h=Math.max(last.h,t.p);last.l=Math.min(last.l,t.p)}return bars}
 const entryPx=(p,t)=>p.kind==='token'?t.p*((p.entryMC||t.mc)/t.mc):p.entry;
 function chartHTML(t){let tf=UI.tf||(t.dead?'ALL':'LIVE');if(t.dead&&tf==='LIVE')tf='ALL';const cs=candles(t,tf).map(c=>({...c}));
 if(!t.dead){const l=cs[cs.length-1];l.c=t.p;l.h=Math.max(l.h,t.p);l.l=Math.min(l.l,t.p)}
@@ -587,7 +587,7 @@ $$('[data-ago]').forEach(e=>e.textContent=ago(+e.dataset.ago));
 const pc=$('#pchart');if(pc&&/profile/.test(location.hash+(location.hash?'':'x'))){const s=series(UI.pRange);pc.innerHTML=chartSvg(s.a,s.delta>=0);const r=$('[data-d24r]');if(r){r.className='d24 '+(s.delta>=0?'up':'dn');r.innerHTML=`${sgn(s.delta)} <span class="mut">${UI.pRange}</span>`}}
 }
 let tickN=0;
-function tick(){tickN++;for(const t of ALL){if(t.dead)continue;if(t.kind==='perp'){const d=(Math.random()-.5)*2*t.vola;t.p=Math.max(t.p*(1+d),1e-12)}if(t.kind==='token'){if(BOND_IDS.has(t.id)){t.p=SPOT_ROUTER.price(t.id);t.mc=SPOT_ROUTER.marketCap(t.id)}else t.mc=t.mc0*(t.p/t.p0)}t.chg=(t.p/t.base-1)*100;if(t.kind==='token')reconcileGraduation(t);t.h.push(t.p);if(t.h.length>90)t.h.shift()}
+function tick(){tickN++;for(const t of ALL){if(t.dead)continue;if(t.kind==='perp'){const d=(Math.random()-.5)*2*t.vola;t.p=Math.max(t.p*(1+d),1e-12)}if(t.kind==='token'){if(BOND_IDS.has(t.id)){t.p=SPOT_ROUTER.price(t.id);t.mc=SPOT_ROUTER.marketCap(t.id)}else t.mc=t.mc0*(t.p/t.p0)}t.chg=(t.p/t.base-1)*100;if(t.kind==='token'){reconcileGraduation(t);if(t.h&&t.h.length){t.h.push(t.p);if(t.h.length>90)t.h.shift()}}}
 checkPerps();recordEquity();saveMkt();
 if(!document.hidden){updateDom();if(tickN%4===0){rail();checkLb()}}}
 /* ---------- NPC archetypes ---------- */
@@ -612,7 +612,7 @@ const NH={},NP={},NC={},CROWD=[],NCASH={},NCLOSED={};
 TN.forEach(n=>NCASH[n]=10000+(hash(n)%90000));
 const nh=n=>NH[n]||(NH[n]={});
 function saveMarketLedger(){try{localStorage.setItem(LEDGER_KEY,JSON.stringify({holders:NH,npcCash:NCASH,npcClosed:NCLOSED,tradeEvents:LIVE_TX,activity:FEED.filter(f=>TN.includes(f.tr)).slice(0,80),graduated:LISTS.grad.filter(id=>BOND_IDS.has(id))}))}catch(e){}}
-(()=>{try{const saved=JSON.parse(localStorage.getItem(LEDGER_KEY)||'null');if(saved&&saved.holders)for(const [n,b] of Object.entries(saved.holders))if(TN.includes(n))NH[n]=b||{};if(saved&&saved.npcCash)for(const [n,c] of Object.entries(saved.npcCash))if(TN.includes(n)&&Number.isFinite(c)&&c>=0)NCASH[n]=c;if(saved&&saved.npcClosed)for(const [n,rows] of Object.entries(saved.npcClosed))if(TN.includes(n)&&Array.isArray(rows))NCLOSED[n]=rows;if(saved&&saved.tradeEvents)for(const [id,rows] of Object.entries(saved.tradeEvents))if(DB[id]&&Array.isArray(rows))LIVE_TX[id]=rows.slice(-200);if(saved&&Array.isArray(saved.activity))FEED.push(...saved.activity.filter(f=>f&&TN.includes(f.tr)));if(saved&&Array.isArray(saved.graduated))for(const id of saved.graduated){const t=DB[id];if(t){t.graduated=true;t.bond=100;LISTS.bond=LISTS.bond.filter(x=>x!==id);if(!LISTS.grad.includes(id))LISTS.grad.unshift(id)}}}catch(e){}})();
+(()=>{try{const saved=JSON.parse(localStorage.getItem(LEDGER_KEY)||'null');if(saved&&saved.holders)for(const [n,b] of Object.entries(saved.holders))if(TN.includes(n))NH[n]=b||{};if(saved&&saved.npcCash)for(const [n,c] of Object.entries(saved.npcCash))if(TN.includes(n)&&Number.isFinite(c)&&c>=0)NCASH[n]=c;if(saved&&saved.npcClosed)for(const [n,rows] of Object.entries(saved.npcClosed))if(TN.includes(n)&&Array.isArray(rows))NCLOSED[n]=rows;if(saved&&saved.tradeEvents)for(const [id,rows] of Object.entries(saved.tradeEvents))if(DB[id]&&Array.isArray(rows))LIVE_TX[id]=rows.slice(-200);if(saved&&Array.isArray(saved.activity))FEED.push(...saved.activity.filter(f=>f&&TN.includes(f.tr)));}catch(e){}})();
 const mins=ts=>(Date.now()-ts)/6e4;
 const liveTok=()=>ALL.filter(t=>t.kind==='token'&&!t.dead);
 const nCount=n=>Object.keys(nh(n)).length;
