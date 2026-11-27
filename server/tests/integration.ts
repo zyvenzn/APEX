@@ -1,18 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../src/config.js';
 import { buildApp } from '../src/app.js';
-import { createPool, createRedis } from '../src/db/pool.js';
+import { createPool } from '../src/db/pool.js';
 
 async function main() {
   const config = loadConfig();
   const db = createPool(config);
-  const redis = createRedis(config);
   let app: Awaited<ReturnType<typeof buildApp>> | undefined;
   const email = `integration-${randomUUID()}@example.test`;
   let userId: string | undefined;
   try {
-    await redis.connect();
-    app = await buildApp({ config, db, redis });
+    app = await buildApp({ config, db });
 
     const ready = await app.inject({ method: 'GET', url: '/v1/health/ready' });
     if (ready.statusCode !== 200) throw new Error('Readiness failed: ' + ready.body);
@@ -90,6 +88,14 @@ async function main() {
     }
     const boughtBase = BigInt(buyBodies[0].amountOutMinor);
     if (boughtBase <= 0n) throw new Error('Spot buy did not credit base asset.');
+    const repeatedBuy = await app.inject({
+      method: 'POST', url: '/v1/spot/trades',
+      headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' }, payload: buyPayload
+    });
+    if (repeatedBuy.statusCode !== 200 || repeatedBuy.json().tradeId !== buyBodies[0].tradeId || repeatedBuy.json().replayed !== true) {
+      throw new Error('Spot retry did not replay the original committed trade.');
+    }
+
     const replayWithChangedRequest = await app.inject({
       method: 'POST', url: '/v1/spot/trades',
       headers: { cookie, 'idempotency-key': 'phase03-spot-buy-001' },
@@ -105,6 +111,44 @@ async function main() {
     });
     if (sell.statusCode !== 201) throw new Error('Spot sell failed: ' + sell.statusCode + ' ' + sell.body);
     if (BigInt(sell.json().amountOutMinor) <= 0n) throw new Error('Spot sell returned no quote asset.');
+
+    const assertPoolReconciles = async (label: string) => {
+      const state = await db.query(
+        \`SELECT m.base_reserve::text AS base_reserve, m.quote_reserve::text AS quote_reserve,
+          (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
+            JOIN ledger_entries e ON e.account_id = a.id
+           WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_POOL:' || m.market_id
+             AND a.asset_code = m.base_asset_code) AS base_ledger_reserve,
+          (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
+            JOIN ledger_entries e ON e.account_id = a.id
+           WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_POOL:' || m.market_id
+             AND a.asset_code = m.quote_asset_code) AS quote_ledger_reserve,
+          (SELECT COALESCE(SUM(e.amount_minor), 0)::text FROM ledger_accounts a
+            JOIN ledger_entries e ON e.account_id = a.id
+           WHERE a.owner_user_id IS NULL AND a.account_code = 'SPOT_FEE_REVENUE:' || m.market_id
+             AND a.asset_code = m.quote_asset_code) AS fee_ledger_minor
+         FROM spot_markets m WHERE m.market_id = 'apex-demo'\`
+      );
+      const row = state.rows[0];
+      if (!row || row.base_reserve !== row.base_ledger_reserve || row.quote_reserve !== row.quote_ledger_reserve) {
+        throw new Error(label + ': spot pool reserves do not reconcile to ledger pool accounts: ' + JSON.stringify(row));
+      }
+      return row;
+    };
+    const afterBuy = await assertPoolReconciles('After BUY');
+    if (BigInt(afterBuy.fee_ledger_minor) !== BigInt(buyBodies[0].feeMinor)) {
+      throw new Error('BUY fee was not posted to the fee revenue account.');
+    }
+    const afterSell = await assertPoolReconciles('After SELL');
+    const expectedFees = BigInt(buyBodies[0].feeMinor) + BigInt(sell.json().feeMinor);
+    if (BigInt(afterSell.fee_ledger_minor) !== expectedFees) {
+      throw new Error('BUY/SELL fee totals do not reconcile to fee revenue ledger.');
+    }
+
+    const legacyClearing = await db.query(
+      \`SELECT id FROM ledger_accounts WHERE owner_user_id IS NULL AND account_code = 'SPOT_CLEARING'\`
+    );
+    if (legacyClearing.rows.length !== 0) throw new Error('Legacy SPOT_CLEARING accounts were created.');
 
     const noFunds = await app.inject({
       method: 'POST', url: '/v1/spot/trades',
@@ -163,11 +207,11 @@ async function main() {
     const revoked = await app.inject({ method: 'GET', url: '/v1/auth/me', headers: { cookie } });
     if (revoked.statusCode !== 401) throw new Error('Session was not revoked');
 
-    console.log('PostgreSQL + Redis integration passed: auth, atomic double-entry grant, idempotency/concurrency, balance/history, immutability, logout/revocation.');
+    console.log('PostgreSQL integration passed: auth, ledger-backed pool reserves and fees, idempotency/retry, balance/history, immutability, logout/revocation.');
   } finally {
     // The CI database is disposable; append-only ledger history is retained until its Postgres service is discarded.
     if (app) await app.close();
-    await Promise.allSettled([db.end(), redis.quit()]);
+    await db.end();
   }
 }
 
