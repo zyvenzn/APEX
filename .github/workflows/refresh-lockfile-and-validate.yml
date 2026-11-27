@@ -1,0 +1,73 @@
+name: Refresh npm lockfile and validate staging audit
+
+on:
+  push:
+    branches:
+      - fix/pre-staging-audit-reconciliation-security
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile-and-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://apex:apex_dev_password@localhost:5432/apex
+      APP_ORIGIN: http://localhost:3000
+      COOKIE_SECURE: "false"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: apex
+          POSTGRES_USER: apex
+          POSTGRES_PASSWORD: apex_dev_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apex -d apex"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/pre-staging-audit-reconciliation-security
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Regenerate complete npm lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Regenerate complete npm dependency lockfile"
+            git push origin HEAD:fix/pre-staging-audit-reconciliation-security
+          fi
+      - name: Verify reproducible install
+        run: npm ci --no-audit --no-fund
+      - name: Check JavaScript syntax and build frontend
+        run: |
+          node --check src/backend-integration.js
+          node --check build.js
+          npm run build
+          git diff --exit-code -- index.html
+      - name: Run frontend unit tests
+        run: npm test
+      - name: Build and test backend
+        run: |
+          npm run build:api
+          npm run test:api
+      - name: Apply all database migrations
+        run: npm run migrate
+      - name: Test PostgreSQL integration and reconciliation
+        run: npm run test:api:integration
+      - name: Install Chromium and run browser E2E
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
