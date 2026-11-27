@@ -9,6 +9,7 @@ import type { Cache } from './db/pool.js';
 import { resolveSession } from './auth/session.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerLedgerRoutes } from './routes/ledger.js';
+import { registerSpotRoutes } from './routes/spot.js';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -35,6 +36,7 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
 
   await registerAuthRoutes(app, { db: deps.db, config: deps.config });
   await registerLedgerRoutes(app, { db: deps.db });
+  await registerSpotRoutes(app, { db: deps.db });
 
   app.get('/v1/ws', {
     websocket: true,
