@@ -273,14 +273,14 @@ const KEY = 'apex-demo-v1';
     near(thresholdProgress, 100, 0.001);
   });
   await test('aggregated NPC flow reports its disabled status without fabricating volume', async () => {
-    const { before, after, flow } = await ev(() => {
+    const { before, after, flow, population } = await ev(() => {
       const api = window.__apex;
       const snapshot = () => Object.fromEntries(Object.values(api.DB).filter(t=>t.kind==='token'&&!t.dead).map(t=>[t.id,[t.p,t.vol]]));
       const before = snapshot(), flow = api.market.flow(180), after = snapshot();
-      return { before, after, flow };
+      return { before, after, flow, population: Object.keys(api.npc.AR).length };
     });
     assert.strictEqual(flow.disabled, true);
-    assert.strictEqual(flow.population, Object.keys(__apex.npc.AR).length);
+    assert.strictEqual(flow.population, population);
     assert.strictEqual(flow.orders, 0); assert.strictEqual(flow.volume, 0);
     assert.deepStrictEqual(after, before);
   });
