@@ -6,10 +6,12 @@ on:
       - feat/bonding-curve-graduation-v1
       - fix/phase-00-build-ci-e2e
       - feat/phase-01-backend-foundation
+      - feat/phase-02-simulation-ledger
   pull_request:
     branches:
       - feat/bonding-curve-graduation-v1
       - fix/phase-00-build-ci-e2e
+      - feat/phase-01-backend-foundation
   workflow_dispatch:
 
 permissions:
