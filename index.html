@@ -1542,8 +1542,7 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
   const $ = (selector, root = document) => root.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const endpoint = path => (apiBase || location.origin) + path;
-  const money = value => '
-</script></body></html> + Number(value || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const money = value => '$' + Number(value || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const units = (minor, decimals) => Number(BigInt(minor || '0')) / Math.pow(10, decimals);
   const key = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'apex-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   function persistPendingTradeKeys() {

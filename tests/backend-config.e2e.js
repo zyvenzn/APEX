@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
-async function withPage(run: (page: import('playwright').Page, origin: string) => Promise<void>) {
+async function withPage(run) {
   const html = readFileSync('index.html', 'utf8');
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
