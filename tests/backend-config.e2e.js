@@ -30,11 +30,12 @@ async function withPage(run) {
 }
 
 test('frontend does not persist API configuration when readiness returns 503', async () => {
-  await withPage(async page => {
+  await withPage(async (page, origin) => {
     await page.route('https://api-not-ready.example/**', async route => {
       await route.fulfill({
         status: 503,
         contentType: 'application/json',
+        headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' },
         body: JSON.stringify({ status: 'degraded', checks: { postgres: 'ok', migrations: 'error' } })
       });
     });
@@ -49,15 +50,15 @@ test('frontend does not persist API configuration when readiness returns 503', a
 });
 
 test('frontend does not persist API configuration when refreshAll fails after readiness', async () => {
-  await withPage(async page => {
+  await withPage(async (page, origin) => {
     await page.route('https://api-not-ready.example/v1/health/ready', route => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok' })
+      status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' }, body: JSON.stringify({ status: 'ok' })
     }));
     await page.route('https://api-not-ready.example/v1/spot/markets', route => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify({ markets: [] })
+      status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' }, body: JSON.stringify({ markets: [] })
     }));
     await page.route('https://api-not-ready.example/v1/auth/me', route => route.fulfill({
-      status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'INTERNAL_ERROR' })
+      status: 500, contentType: 'application/json', headers: { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true' }, body: JSON.stringify({ error: 'INTERNAL_ERROR' })
     }));
     await page.locator('[data-apex-action="save-api"]').click();
     await page.waitForFunction(() => {
