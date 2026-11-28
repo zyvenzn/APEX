@@ -10,7 +10,7 @@ async function withPage(run) {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(html);
   });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Static test server did not bind');
   const origin = `http://127.0.0.1:${address.port}`;
@@ -25,7 +25,7 @@ async function withPage(run) {
     await run(page, origin);
   } finally {
     await browser.close();
-    await new Promise<void>(resolve => server.close(() => resolve()));
+    await new Promise(resolve => server.close(() => resolve()));
   }
 }
 
