@@ -12,7 +12,11 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
   const frontendPort = 3310;
   const apiPort = 3311;
   const frontendOrigin = `http://127.0.0.1:${frontendPort}`;
-  const apiOrigin = `http://127.0.0.1:${apiPort}`;
+  // Exercise the frontend through a same-origin local reverse proxy so this
+  // simulator-flow E2E is not coupled to browser third-party-cookie policy.
+  // Cross-origin CORS and production cookie attributes are covered separately.
+  const apiOrigin = frontendOrigin;
+  const upstreamApiOrigin = `http://127.0.0.1:${apiPort}`;
   const config = loadConfig({
     ...process.env,
     NODE_ENV: 'test',
@@ -24,7 +28,40 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
   const db = createPool(config);
   const app = await buildApp({ config, db });
   const html = readFileSync('index.html', 'utf8');
-  const staticServer = createServer((_request, response) => {
+  const staticServer = createServer(async (request, response) => {
+    if (request.url?.startsWith('/v1/')) {
+      try {
+        const headers: Record<string, string> = {};
+        for (const name of ['cookie', 'origin', 'referer', 'content-type', 'idempotency-key', 'accept']) {
+          const value = request.headers[name];
+          if (typeof value === 'string') headers[name] = value;
+        }
+        let body: Buffer | undefined;
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+          const chunks: Buffer[] = [];
+          for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          body = Buffer.concat(chunks);
+        }
+        const upstream = await fetch(upstreamApiOrigin + request.url, {
+          method: request.method,
+          headers,
+          body
+        });
+        response.statusCode = upstream.status;
+        upstream.headers.forEach((value, name) => {
+          if (name.toLowerCase() !== 'set-cookie' && name.toLowerCase() !== 'transfer-encoding') {
+            response.setHeader(name, value);
+          }
+        });
+        const setCookies = upstream.headers.getSetCookie?.();
+        if (setCookies?.length) response.setHeader('set-cookie', setCookies);
+        response.end(Buffer.from(await upstream.arrayBuffer()));
+      } catch (error) {
+        response.writeHead(502, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'TEST_PROXY_FAILED', message: String(error) }));
+      }
+      return;
+    }
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(html);
   });
