@@ -9,6 +9,7 @@ import { resolveSession } from './auth/session.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerLedgerRoutes } from './routes/ledger.js';
 import { registerSpotRoutes } from './routes/spot.js';
+import { checkMigrationReadiness } from './db/migration-readiness.js';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -43,8 +44,13 @@ export async function buildApp(deps: AppDependencies): Promise<FastifyInstance> 
 
   app.get('/v1/health/live', async () => ({ status: 'ok', service: 'apex-api' }));
   app.get('/v1/health/ready', async (_request, reply) => {
-    const checks: Record<string, 'ok' | 'error'> = { postgres: 'error' };
-    try { await deps.db.query('SELECT 1'); checks.postgres = 'ok'; } catch { /* keep dependency details private */ }
+    const checks: Record<string, 'ok' | 'error'> = { postgres: 'error', migrations: 'error' };
+    try {
+      await deps.db.query('SELECT 1');
+      checks.postgres = 'ok';
+      const migrationState = await checkMigrationReadiness(deps.db);
+      checks.migrations = migrationState.ready ? 'ok' : 'error';
+    } catch { /* keep dependency and schema details private */ }
     const ready = Object.values(checks).every(value => value === 'ok');
     return reply.code(ready ? 200 : 503).send({ status: ready ? 'ok' : 'degraded', checks });
   });

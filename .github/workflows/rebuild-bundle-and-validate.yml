@@ -5,6 +5,7 @@ on:
     branches:
       - fix/pre-staging-audit-reconciliation-security
       - fix/staging-db-safety-static-build
+      - fix/pre-staging-hardening
 
 permissions:
   contents: read
@@ -15,9 +16,11 @@ jobs:
     timeout-minutes: 30
     env:
       NODE_ENV: test
+      DEPLOYMENT_ENVIRONMENT: test
       DATABASE_URL: postgres://apex:apex_dev_password@localhost:5432/apex
       EXPECTED_DATABASE_NAME: apex
       EXPECTED_DATABASE_USER: apex
+      EXPECTED_DATABASE_INSTANCE_ID: 00000000-0000-4000-8000-000000000002
       APP_ORIGIN: http://localhost:3000
       COOKIE_SECURE: "false"
     services:
@@ -56,6 +59,18 @@ jobs:
         run: |
           npm run build:api
           npm run test:api
+      - name: Provision isolated CI database identity marker
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE apex_database_identity (
+            singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+            environment_name text NOT NULL CHECK (environment_name IN ('development','test','staging','production')),
+            instance_id uuid NOT NULL UNIQUE,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          INSERT INTO apex_database_identity (singleton, environment_name, instance_id)
+          VALUES (TRUE, 'test', '00000000-0000-4000-8000-000000000002');
+          SQL
       - name: Database migrations
         run: npm run migrate
       - name: Database identity guard tests
@@ -68,4 +83,5 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:api:browser
+          node tests/backend-config.e2e.js
           npm run test:e2e

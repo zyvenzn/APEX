@@ -1542,7 +1542,8 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
   const $ = (selector, root = document) => root.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const endpoint = path => (apiBase || location.origin) + path;
-  const money = value => '$' + Number(value || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const money = value => '
+</script></body></html> + Number(value || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const units = (minor, decimals) => Number(BigInt(minor || '0')) / Math.pow(10, decimals);
   const key = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'apex-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   function persistPendingTradeKeys() {
@@ -1857,16 +1858,22 @@ window.__apex={S,DB,UI,go,ACT,npc:{AR,ARCH,step:npcStep,FEED},market:{graduation
       const box = $('#apex-api-error'); if (box) box.textContent = 'Enter a valid API origin (scheme + host only).';
       return;
     }
+    const previousApiBase = apiBase;
     apiBase = value;
     try {
-      await request('/v1/health/live');
+      await request('/v1/health/ready');
+      const refreshed = await refreshAll();
+      if (!refreshed) throw new Error('API is reachable but application data could not be loaded.');
       localStorage.setItem(CONFIG_KEY, apiBase);
-      await refreshAll();
       closeModal();
       if (!user) authModal('login');
-      toast('APEX API connected.');
+      toast('APEX API connected and ready.');
     } catch (error) {
-      const box = $('#apex-api-error'); if (box) box.textContent = 'Connection failed: ' + error.message;
+      apiBase = previousApiBase;
+      const message = error.status === 503
+        ? 'Backend is not ready. Check PostgreSQL and required migrations.'
+        : error.message;
+      const box = $('#apex-api-error'); if (box) box.textContent = 'Connection failed: ' + message;
     }
   }
 

@@ -179,21 +179,103 @@ The audit branch includes a lockfile-refresh workflow. It regenerates `package-l
 All orders remain simulated. No wallet signing, real deposits, blockchain transactions, or external DEX writes are performed. The frontend refreshes market snapshots by HTTP polling; the existing WebSocket endpoint does not yet publish market broadcasts.
 
 
-## Database safety and staging identity
+## Database safety and deployment identity
 
-Every backend and migration process must set these two expected-identity variables; they are independent of `NODE_ENV` and are compared with PostgreSQL `current_database()` and `current_user`:
+APEX fails closed unless PostgreSQL contains an operator-provisioned `apex_database_identity` marker matching all configured values. The marker is deliberately **not** created by application startup or by application migrations. It provides an independent environment/instance check in addition to `current_database()` and `current_user`; hostname matching alone is not treated as isolation.
 
-```sh
-EXPECTED_DATABASE_NAME=apex
-EXPECTED_DATABASE_USER=apex
+Required backend and migration environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `NODE_ENV` | Runtime mode; use `production` on Render |
+| `DEPLOYMENT_ENVIRONMENT` | Exact marker environment: `staging` or `production` |
+| `DATABASE_URL` | Connection URL for the isolated database |
+| `EXPECTED_DATABASE_NAME` | Exact result of `current_database()` |
+| `EXPECTED_DATABASE_USER` | Exact result of `current_user` |
+| `EXPECTED_DATABASE_INSTANCE_ID` | Unique UUID assigned to this specific database instance |
+| `APP_ORIGIN` | Exact frontend origin, no wildcard or trailing path |
+| `COOKIE_SECURE` | Must be `true` when `NODE_ENV=production` |
+| `SESSION_TTL_HOURS` | Session lifetime, 1–720 hours |
+| `HOST`, `PORT` | Render binds `0.0.0.0` and supplies the port |
+
+### Provision the identity marker
+
+Create a **separate PostgreSQL instance for staging**, with a database name and login role that are not used by production. Use the database owner/admin connection to provision the marker before running migrations. Generate a new random UUID for each database instance; store the same UUID in Render's `EXPECTED_DATABASE_INSTANCE_ID`. Do not reuse this UUID in production or another environment.
+
+Example SQL (replace the environment, UUID, database name, and role with the actual staging values):
+
+```sql
+CREATE TABLE apex_database_identity (
+  singleton boolean PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  environment_name text NOT NULL CHECK (environment_name IN ('development','test','staging','production')),
+  instance_id uuid NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO apex_database_identity (singleton, environment_name, instance_id)
+VALUES (TRUE, 'staging', 'b7e2b47a-a4d8-4d86-8e4a-a2a98e3e81c1');
+GRANT SELECT ON apex_database_identity TO apex_staging_user;
 ```
 
-For staging, set them to the exact database name and dedicated database role shown by the staging PostgreSQL instance, for example `EXPECTED_DATABASE_NAME=apex_staging` and `EXPECTED_DATABASE_USER=apex_staging_user`. Set `DATABASE_URL` to that same staging database's **internal** connection URL. Never reuse production credentials or a production connection URL in staging. A mismatch fails closed with a safe error that does not print `DATABASE_URL`.
+The marker is not a cryptographic proof that a remote PostgreSQL cluster is physically separate. The actual safety boundary remains a separately provisioned staging database/service, unique database and role, unique credentials, restricted access, and an instance UUID that is not copied from production. Never configure staging with production's `DATABASE_URL`, username, password, or marker UUID. A hostname or Render internal URL by itself is insufficient proof of isolation.
 
-The migration runner uses PostgreSQL session advisory lock `(1095781720, 1)`: namespace `0x41504558` (`APEX`) and key `1`. The lock is held on the same dedicated connection from before the migration transaction until after commit/rollback. PostgreSQL releases it if the connection dies; the runner explicitly unlocks it on success and failure. Do not change this key without coordinating all migration executors.
+For local Docker development, `docker-compose.yml` mounts `docker/postgres-init/001-database-identity.sql` into the PostgreSQL initialization directory. The development marker uses the UUID in `server/.env.example`. If the Docker volume already existed before this file was added, remove only that disposable local development volume or provision the marker manually; do not run volume deletion commands against any shared database.
 
-Migrations remain an explicit one-shot operation (`npm run migrate`), not a backend startup hook. The runner checks expected database identity before lock acquisition and DDL. The API repeats the identity check before binding its HTTP port.
+### Migration execution and readiness
 
-## Render Static Site build
+Migrations remain an explicit one-shot operation; backend startup never runs DDL.
 
-The root `npm run build` runs `build.js`, which writes both the standalone root `index.html` and `public/index.html`, then runs `scripts/verify-static-build.mjs`. The verifier checks that the publish artifact exists, matches the root bundle, contains the Backend Spot API configuration/integration markers, and has no remaining local `/src/` script references. Configure a Render Static Site with root directory `.`, build command `npm ci --include=dev && npm run build`, and publish directory `public`.
+1. Provision the dedicated PostgreSQL staging instance and identity marker.
+2. Set all required environment variables on the migration command/service.
+3. Run `npm ci --include=dev` and `npm run build:api`.
+4. Run `npm run migrate` exactly once as a controlled pre-deployment step. The advisory lock serializes concurrent executors; the default lock wait is 30 seconds and timeout exits with `APEX_MIGRATION_LOCK_TIMEOUT`.
+5. Deploy/start the API only after migration exits successfully.
+6. Verify `GET /v1/health/live` returns 200 and `GET /v1/health/ready` returns 200. Readiness checks PostgreSQL and every migration file currently required by the application. Missing migration table/version returns 503.
+7. Deploy the static frontend and verify the browser can authenticate and call the API.
+
+The advisory lock key remains `(1095781720, 1)` (namespace `0x41504558`, ASCII APEX). The lock is acquired with `pg_try_advisory_lock` on a dedicated connection and held across the migration transaction. Failure rolls back; unlock is attempted on the same session. If the session disconnects, PostgreSQL releases its session lock.
+
+### Render deployment contract (manual configuration only)
+
+No Render resource is created or modified by this repository change. Configure the following resources manually, using the staging-only database credentials and identity marker above.
+
+**1. Render PostgreSQL**
+
+- Create a new PostgreSQL instance specifically for staging; do not attach or reuse production.
+- Create/use a dedicated staging database and login role.
+- Provision `apex_database_identity` as described above.
+- Use its **internal** connection URL for the API service.
+- Keep the database and API in the same Render region where possible.
+- Keep backups/exports separate from Git; treat a free instance as disposable.
+
+**2. Render Web Service — backend API**
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `.` |
+| Runtime | Node |
+| Build Command | `npm ci --include=dev && npm run build:api` |
+| Start Command | `npm run start:api` |
+| Health Check Path | `/v1/health/ready` |
+| Instance count | 1 for current process-local rate limiter |
+
+Set the environment variables listed above. In particular, set `NODE_ENV=production`, `DEPLOYMENT_ENVIRONMENT=staging`, `COOKIE_SECURE=true`, `HOST=0.0.0.0`, `DATABASE_URL` to the staging internal URL, and the exact expected database name, role, and unique marker UUID. Set `APP_ORIGIN` to the deployed frontend origin (for example `https://apex-staging.onrender.com`), not a wildcard. Render supplies `PORT`; the service binds to it.
+
+**3. Render Static Site — frontend**
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `.` |
+| Build Command | `npm ci --include=dev && npm run build` |
+| Publish Directory | `public` |
+
+After publishing, configure the API origin in **Backend Spot → Configure API** using the backend HTTPS origin. The frontend uses credentialed fetch requests. Production cookies are `HttpOnly; Secure; SameSite=None`; browsers may still block third-party cookies. A same-site custom domain or same-origin reverse proxy is more reliable where browser privacy restrictions apply.
+
+### Security and operational boundaries
+
+- Never copy production credentials, connection URLs, or database identity UUIDs into staging.
+- Do not put secrets in Git, README examples, build arguments, frontend code, or logs.
+- The app identity marker is checked before the backend binds its HTTP listener and before migration lock acquisition.
+- Liveness is process-only. Readiness checks database connectivity plus the complete required migration set.
+- CI provisions its own temporary PostgreSQL marker and never connects to Render.
+- Fastify rate limits are process-local; keep staging to one API instance until a shared limiter is implemented.
+- Cookie/CORS/CSRF tests use Fastify injection. They verify emitted headers and policy decisions, not real browser cookie acceptance over a deployed HTTPS domain. A real staging HTTPS browser smoke test remains mandatory after deployment.

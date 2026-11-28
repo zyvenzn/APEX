@@ -35,6 +35,29 @@ test('serializes concurrent migration executors and releases advisory lock after
   };
 
   try {
+    // Hold the advisory lock from another session and prove timeout is bounded.
+    const holder = await pool.connect();
+    await holder.query('SELECT pg_advisory_lock($1, $2)', [
+      APEX_MIGRATION_LOCK_NAMESPACE, APEX_MIGRATION_LOCK_ID
+    ]);
+    try {
+      await assert.rejects(
+        runMigrations(pool, config, directory, { lockTimeoutMs: 200, lockPollIntervalMs: 25 }),
+        error => {
+          assert.equal((error as { code?: string }).code, 'APEX_MIGRATION_LOCK_TIMEOUT');
+          assert.match((error as Error).message, /Timed out waiting 200ms/);
+          return true;
+        }
+      );
+      assert.equal(await lockIsAvailable(), false, 'timed-out executor must not release another session lock');
+    } finally {
+      await holder.query('SELECT pg_advisory_unlock($1, $2)', [
+        APEX_MIGRATION_LOCK_NAMESPACE, APEX_MIGRATION_LOCK_ID
+      ]);
+      holder.release();
+    }
+    assert.equal(await lockIsAvailable(), true, 'lock must be available after holder releases it');
+
     await writeFile(resolve(directory, version + '.sql'), 'SELECT pg_sleep(1);');
     const startedAt = Date.now();
     await Promise.all([

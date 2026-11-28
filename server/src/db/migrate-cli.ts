@@ -7,7 +7,12 @@ const { Pool } = pg;
 
 async function main() {
   const config = loadConfig();
-  const pool = new Pool({ connectionString: config.DATABASE_URL, max: 2 });
+  const pool = new Pool({
+    connectionString: config.DATABASE_URL,
+    max: 2,
+    connectionTimeoutMillis: 5_000,
+    statement_timeout: 30_000
+  });
   try {
     await runMigrations(pool, config, resolve(process.cwd(), 'server/migrations'));
   } finally {
@@ -16,6 +21,7 @@ async function main() {
 }
 
 main().catch(error => {
-  console.error('Migration failed:', error instanceof Error ? error.message : 'unknown error');
+  const message = error instanceof Error ? error.message : 'unknown error';
+  console.error('Migration failed:', message);
   process.exit(1);
 });

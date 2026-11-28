@@ -338,16 +338,22 @@
       const box = $('#apex-api-error'); if (box) box.textContent = 'Enter a valid API origin (scheme + host only).';
       return;
     }
+    const previousApiBase = apiBase;
     apiBase = value;
     try {
-      await request('/v1/health/live');
+      await request('/v1/health/ready');
+      const refreshed = await refreshAll();
+      if (!refreshed) throw new Error('API is reachable but application data could not be loaded.');
       localStorage.setItem(CONFIG_KEY, apiBase);
-      await refreshAll();
       closeModal();
       if (!user) authModal('login');
-      toast('APEX API connected.');
+      toast('APEX API connected and ready.');
     } catch (error) {
-      const box = $('#apex-api-error'); if (box) box.textContent = 'Connection failed: ' + error.message;
+      apiBase = previousApiBase;
+      const message = error.status === 503
+        ? 'Backend is not ready. Check PostgreSQL and required migrations.'
+        : error.message;
+      const box = $('#apex-api-error'); if (box) box.textContent = 'Connection failed: ' + message;
     }
   }
 
