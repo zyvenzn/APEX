@@ -18,7 +18,7 @@ for (const marker of [
   'apex-backend-api-base-v1',
   'Test and connect',
   'window.APEXBackend',
-  '/v1/health/live',
+  '/v1/health/ready',
   '/v1/spot/trades'
 ]) {
   if (!staticHtml.includes(marker)) {
