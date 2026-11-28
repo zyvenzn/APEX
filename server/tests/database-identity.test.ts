@@ -31,7 +31,9 @@ test('accepts only the independently provisioned database environment marker', a
 test('rejects a matching host/name but wrong environment marker or instance ID', async () => {
   for (const marker of [
     { environment_name: 'production', instance_id: expected.EXPECTED_DATABASE_INSTANCE_ID },
-    { environment_name: 'staging', instance_id: '00000000-0000-4000-8000-000000000099' }
+    { environment_name: 'staging', instance_id: '00000000-0000-4000-8000-000000000099' },
+    { database_name: 'apex_production', environment_name: 'staging', instance_id: expected.EXPECTED_DATABASE_INSTANCE_ID },
+    { database_user: 'apex_production_user', environment_name: 'staging', instance_id: expected.EXPECTED_DATABASE_INSTANCE_ID }
   ]) {
     const db = { async query() {
       return { rows: [{
