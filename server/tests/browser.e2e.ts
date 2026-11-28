@@ -28,8 +28,10 @@ test('backend Spot UI survives refresh and replays a committed order after a dro
   const db = createPool(config);
   const app = await buildApp({ config, db });
   const html = readFileSync('index.html', 'utf8');
+  let proxyEnabled = false;
   const staticServer = createServer(async (request, response) => {
-    if (request.url?.startsWith('/v1/')) {
+    if (request.url?.startsWith('/v1/health/ready')) proxyEnabled = true;
+    if (request.url?.startsWith('/v1/') && proxyEnabled) {
       try {
         const headers: Record<string, string> = {};
         for (const name of ['cookie', 'origin', 'referer', 'content-type', 'idempotency-key', 'accept']) {
