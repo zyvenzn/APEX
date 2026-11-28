@@ -1,3 +1,4 @@
+# This workflow includes exact-commit pre-staging hardening regression checks.
 name: Rebuild standalone bundle and validate audit branch
 
 on:
